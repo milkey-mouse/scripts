@@ -1,0 +1,18 @@
+#!/bin/sh
+
+[ -z "$1" ] || cd "$1"
+
+mount --types proc /proc proc
+mount --rbind /sys sys
+mount --make-rslave sys
+mount --rbind /dev dev
+mount --make-rslave dev
+
+mount --rbind /tmp tmp
+[ -d var/tmp ] && mount --rbind /var/tmp var/tmp
+
+[ -s etc/resolv.conf ] || (touch etc/resolv.conf && mount --bind -o ro /etc/resolv.conf etc/resolv.conf)
+[ -s etc/passwd ] || (touch etc/passwd && mount --bind -o ro /etc/passwd etc/passwd)
+[ -s etc/group ] || (touch etc/group && mount --bind -o ro /etc/group etc/group)
+
+[ -d usr/portage ] && mount --bind -o ro /usr/portage usr/portage

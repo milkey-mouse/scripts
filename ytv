@@ -1,0 +1,4 @@
+#!/bin/sh
+# Stream the first YouTube result for a search term.
+
+exec mpv ytdl://ytsearch:"$*"

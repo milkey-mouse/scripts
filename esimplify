@@ -1,0 +1,24 @@
+#!/bin/bash
+# esimplify: list packages by number of dependents
+set -euo pipefail
+
+export ESIMPLIFY_TMPDIR="$(mktemp -td esimplify.XXXX)"
+cleanup() {
+  rm -rf "${ESIMPLIFY_TMPDIR}"
+}
+trap cleanup EXIT
+
+# only dependencies/non-world packages will be in this list
+export FILTER="$(awk 'NR==FNR{a[$0];next} !($3 in a)' <(equery list @world) <(equery list @installed))"
+
+gendeps() {
+  for pkg in "$@"; do
+    mkdir -p "$(dirname "${ESIMPLIFY_TMPDIR}/${pkg}")"
+    equery -Cq depgraph -MU --depth=0 "${pkg}" | tail -n+4 | cut -d] -f2- | tr -d ' ' | grep -Fx "${FILTER}" | sed "s#^#${pkg} #g" > "${ESIMPLIFY_TMPDIR}/${pkg}"
+  done
+}
+export -f gendeps
+
+equery list @selected | xargs -n$(awk "BEGIN{x=int($(equery list @selected | wc -l)/$(nproc)); print (x<1)?1:x}") -P$(nproc) bash -c 'gendeps "$@"' bash
+
+find "${ESIMPLIFY_TMPDIR}" -type f -print0 | sort --files0-from=- -k2 | uniq -cf1 | sort -n | awk '{print $1=="1"?$2" needs "$3:$1" packages need "$3}'

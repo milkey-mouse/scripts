@@ -1,0 +1,47 @@
+#!/bin/bash
+
+echo -e "\033]2;fzf_run-dd63e1b3cec164442d3c3d616b964bbc0d04f28f1bd134a898c5aba9c0cb6e23\007"
+
+RUN_HISTORY="$HOME/.cache/fzf_run"
+CMD_PREFIX="swaymsg exec"
+
+mkdir -p "$(dirname "${RUN_HISTORY}")"
+
+HISTORY="$(cut -d' ' -f2- "${RUN_HISTORY}")"
+CMD="$(
+    (echo "${HISTORY}" && comm -23 <(compgen -c | sort -u) <(echo "${HISTORY}" | sort)) |
+    fzf --tiebreak=index --layout=reverse --color=16 --print-query "$@" | tail -n1
+)"
+
+[ -z "${CMD}" ] && exit 1
+
+# run in background to make script slightly quicker
+${CMD_PREFIX} ${CMD} &
+
+read -d '' AWK_INCREMENT_ROW << 'EOF'
+# Increments the first column of a row that matches $1.
+# Example: '13 man' becomes '14 man'
+BEGIN {
+    append=1
+    cmd=ARGV[1]
+    delete ARGV[1]
+    rgx="^[0-9]+ "cmd"$"
+}
+{
+    if ($0 ~ rgx) {
+        $1=$1+1
+        append=0
+    }
+    print $0
+}
+END {
+    if (append) {
+        print "1 "cmd
+    }
+}
+EOF
+
+awk "${AWK_INCREMENT_ROW}" "${CMD}" "${RUN_HISTORY}" | sort -nr > "${RUN_HISTORY}.tmp"
+mv "${RUN_HISTORY}.tmp" "${RUN_HISTORY}"
+
+echo -e "\033]2;fzf_run\007"

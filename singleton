@@ -1,0 +1,59 @@
+#!/bin/sh
+# Wrapper which runs a maximum of one instance of a program at a time. If
+# another instance is running, it will be killed. If the first argument passed
+# is --toggle, either the current instance is stopped or a new one is started
+# (not both).
+set -o pipefail
+
+TOGGLE=0
+SIGNAL="-SIGTERM"
+
+if [ "$(basename "$0")" != "singleton" ]; then
+  # find best version of this program in $PATH which isn't this one
+  PROGRAM="$(which -a "$(basename "$0")" | grep -Fvx "$(realpath -s "$0")" | head -n1)"
+else
+  while true; do
+      case $1 in
+      "--toggle")
+          TOGGLE=1
+          ;;
+      -SIG*)
+          SIGNAL="$1"
+          ;;
+      *)
+          break
+          ;;
+      esac
+      shift
+  done
+  PROGRAM="$1"
+  shift
+fi
+
+if [ -z "${PROGRAM}" ]; then
+  PROGRAM=true
+fi
+
+PIDFILE="/tmp/$(basename "${PROGRAM}")-singleton-${UID}.pid"
+
+# avoid recursion
+#[ "$(basename "${PROGRAM}")" = "singleton" ] && echo yote $0 $@ && exit
+
+function kill {
+    cat "${PIDFILE}" 2>/dev/null | xargs -r kill "${SIGNAL}"
+}
+
+kill && [ "${TOGGLE}" = "1" ] && exit
+while [ -e "${PIDFILE}" ]; do
+    sleep 0.1
+done
+
+"${PROGRAM}" "$@" &
+echo $! > "${PIDFILE}"
+
+function cleanup {
+    rm -f "${PIDFILE}"
+}
+trap cleanup EXIT
+
+wait

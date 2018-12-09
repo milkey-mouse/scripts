@@ -1,0 +1,5 @@
+#!/bin/bash
+
+DIR="$(realpath "${1:-$(pwd)}")"
+SPACES_IN_DIR=$(echo "$DIR" | grep -o " " | wc -l)
+mount | grep "$DIR" | cut -d" " -f3-$(( 3 + $SPACES_IN_DIR )) | awk '{ print length($0) " " $0; }' | sort -r -n | cut -d ' ' -f 2- | tr '\n' '\0' | xargs -n1 -0 umount

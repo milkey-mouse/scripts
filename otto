@@ -1,0 +1,16 @@
+#!/bin/bash
+set -euo pipefail
+
+OTTO_HISTORY="${OTTO_HISTORY:-"$HOME/.otto/${1:-default}"}"
+mkdir -p "$(dirname "${OTTO_HISTORY}")" && touch "${OTTO_HISTORY}"
+
+function best_ngram() {
+    # Get the (null-delimited) line with the highest ranking from the history.
+    grep -Fz "$1" "${OTTO_HISTORY}" | sort -z | uniq -zc | sort -zn | tail -zn1 | tr -d '\0' | sed 's/^ *[0-9]* //' || echo "$1"
+}
+
+while IFS= read -d $'\0' PREFIX || [[ -n "${PREFIX}" ]]; do
+    BEST="$(best_ngram "${PREFIX}")"
+    echo "${BEST}"
+    printf '%s\0' "${BEST}" >> "${OTTO_HISTORY}"
+done
