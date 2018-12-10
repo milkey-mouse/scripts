@@ -41,7 +41,7 @@ END {
 }
 EOF
 
-awk "${AWK_INCREMENT_ROW}" "${CMD}" "${RUN_HISTORY}" | sort -nr > "${RUN_HISTORY}.tmp"
+awk "${AWK_INCREMENT_ROW}" "$(cut -d' ' -f1 <<<"${CMD}")" "${RUN_HISTORY}" | sort -nr > "${RUN_HISTORY}.tmp"
 mv "${RUN_HISTORY}.tmp" "${RUN_HISTORY}"
 
 echo -e "\033]2;fzf_run\007"
