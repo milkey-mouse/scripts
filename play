@@ -15,4 +15,4 @@ else
   SORT=sort
 fi
 
-exec mpv --playlist <(find "${SELECTED}" -type f -name '*.mp3' | ${SORT} | xargs realpath -s)
+exec mpv --playlist <(find "${SELECTED}" -type f -name '*.mp3' | ${SORT} | xargs realpath -s) --loop-playlist
