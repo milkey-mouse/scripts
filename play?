@@ -1,0 +1,5 @@
+#!/bin/sh
+# play?: print metadata for what mpv is playing
+
+echo '{ "command": ["get_property", "filtered-metadata"] }' | nc -Uw 1 ~/.config/mpv/socket | \
+head -n1 | jq -r '.data | keys_unsorted[] as $k | "\($k): \(.[$k])"'
