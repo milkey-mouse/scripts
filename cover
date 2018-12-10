@@ -5,6 +5,6 @@ getcover() {
   echo "$(dirname "$(play? | grep '^Path:' | cut -d' ' -f2-)")"/cover.*
 }
 
-while watch -egn 1 play? 1>&2; do
+while watch -tegn 1 play? 1>&2; do
   jq -cn '{ "command": ["loadfile", $ARGS.positional[0], "replace"] }' --args "$(getcover)"
 done | mvi --input-file=/dev/stdin "$(getcover)"
