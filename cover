@@ -1,0 +1,10 @@
+#!/bin/sh
+set -euo pipefail
+
+getcover() {
+  echo "$(dirname "$(play? | grep '^Path:' | cut -d' ' -f2-)")"/cover.*
+}
+
+while watch -egn 1 play? 1>&2; do
+  echo "loadfile" "$(getcover)" "replace"
+done | mvi --input-file=/dev/stdin "$(getcover)"
