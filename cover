@@ -6,5 +6,5 @@ getcover() {
 }
 
 while watch -egn 1 play? 1>&2; do
-  echo "loadfile" "$(getcover)" "replace"
+  jq -cn '{ "command": ["loadfile", $ARGS.positional[0], "replace"] }' --args "$(getcover)"
 done | mvi --input-file=/dev/stdin "$(getcover)"
