@@ -1,7 +1,6 @@
 #!/bin/bash
 # cover: show album covers for currently playing music
 set -o pipefail
-set -x
 
 function fixecho() {
   # when watch is terminated abruptly it can leave echo off (or something...)
@@ -16,7 +15,9 @@ while :; do
   if [ -e "${PLAYING}" ]; then
     jq -cn '{ "command": ["loadfile", $ARGS.positional[0], "replace"] }' --args "$(dirname "${PLAYING}")"/cover.*
   fi
+  trap break INT
   watch -tegn 1 play? </dev/null 1>&2 || break
+  trap - INT
 done
 echo quit
 ) | (
