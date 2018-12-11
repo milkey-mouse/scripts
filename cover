@@ -1,10 +1,25 @@
-#!/bin/sh
-set -euo pipefail
+#!/bin/bash
+# cover: show album covers for currently playing music
+set -o pipefail
+set -x
 
-getcover() {
-  echo "$(dirname "$(play? | grep '^Path:' | cut -d' ' -f2-)")"/cover.*
+function fixecho() {
+  # when watch is terminated abruptly it can leave echo off (or something...)
+  # however, this operation failing shouldn't crash the program
+  stty echo || true
 }
+trap fixecho EXIT
 
-while watch -tegn 1 play? 1>&2; do
-  jq -cn '{ "command": ["loadfile", $ARGS.positional[0], "replace"] }' --args "$(getcover)"
-done | mvi --input-file=/dev/stdin "$(getcover)"
+(
+while :; do
+  PLAYING="$(play? 2>/dev/null | grep '^Path:' | cut -d' ' -f2-)"
+  if [ -e "${PLAYING}" ]; then
+    jq -cn '{ "command": ["loadfile", $ARGS.positional[0], "replace"] }' --args "$(dirname "${PLAYING}")"/cover.*
+  fi
+  watch -tegn 1 play? </dev/null 1>&2 || break
+done
+echo quit
+) | (
+  mvi --input-file=/dev/stdin --really-quiet --force-window --idle &&
+  cat >/dev/null # keep showing metadata in terminal even after mpv is closed
+)

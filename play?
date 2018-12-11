@@ -1,5 +1,6 @@
 #!/bin/sh
 # play?: print metadata for what mpv is playing
+set -o pipefail
 
 echo '{ "command": ["get_property", "path"] }' | nc -Uw 1 ~/.config/mpv/socket | \
 head -n1 | jq -r '"Path: " + .data'
