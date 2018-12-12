@@ -1,6 +1,7 @@
 #!/bin/bash
 # cover: show album covers for currently playing music
-
+# create alias for stdout for subshell
+exec 3>&1
 exec mvi --really-quiet --force-window --idle --no-input-terminal --input-file=<(
   set -eu
   trap 'echo quit' EXIT
@@ -8,7 +9,7 @@ exec mvi --really-quiet --force-window --idle --no-input-terminal --input-file=<
   while :; do
     METADATA="$(play? 2>/dev/null)"
     [ -z "${METADATA}" ] && break
-    echo "${METADATA}" >&2
+    (echo "${METADATA}" && echo -ne '\n') >&3
 
     PLAYPATH="$(echo "${METADATA}" | grep '^Path:' | cut -d' ' -f2-)"
     [ -e "${PLAYPATH}" ] && jq -cn '{ "command": ["loadfile", $ARGS.positional[0], "replace"] }' --args "$(dirname "${PLAYPATH}")"/cover.*
