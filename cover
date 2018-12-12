@@ -1,26 +1,18 @@
 #!/bin/bash
 # cover: show album covers for currently playing music
-set -o pipefail
 
-function fixecho() {
-  # when watch is terminated abruptly it can leave echo off (or something...)
-  # however, this operation failing shouldn't crash the program
-  stty echo || true
-}
-trap fixecho EXIT
-
-(
-while :; do
-  PLAYING="$(play? 2>/dev/null | grep '^Path:' | cut -d' ' -f2-)"
-  if [ -e "${PLAYING}" ]; then
-    jq -cn '{ "command": ["loadfile", $ARGS.positional[0], "replace"] }' --args "$(dirname "${PLAYING}")"/cover.*
-  fi
+exec mvi --really-quiet --force-window --idle --no-input-terminal --input-file=<(
+  set -eu
+  trap 'echo quit' EXIT
   trap break INT
-  watch -tegn 1 play? </dev/null 1>&2 || break
-  trap - INT
-done
-echo quit
-) | (
-  mvi --input-file=/dev/stdin --really-quiet --force-window --idle &&
-  cat >/dev/null # keep showing metadata in terminal even after mpv is closed
+  while :; do
+    METADATA="$(play? 2>/dev/null)"
+    [ -z "${METADATA}" ] && break
+    echo "${METADATA}" >&2
+
+    PLAYPATH="$(echo "${METADATA}" | grep '^Path:' | cut -d' ' -f2-)"
+    [ -e "${PLAYPATH}" ] && jq -cn '{ "command": ["loadfile", $ARGS.positional[0], "replace"] }' --args "$(dirname "${PLAYPATH}")"/cover.*
+
+    nc -U ~/.config/mpv/socket 2>/dev/null | jq --unbuffered 'select(.event=="metadata-update")' | :
+  done
 )
