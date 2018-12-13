@@ -1,4 +1,4 @@
 #!/bin/sh
 # Stream the audio of the first YouTube result for a search term.
 
-exec singleton mpv --ytdl-format=bestaudio --loop=inf ytdl://scsearch:"$*"
+exec mpv --ytdl-format=bestaudio --loop=inf ytdl://scsearch:"$*"
