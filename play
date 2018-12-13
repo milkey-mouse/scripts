@@ -15,4 +15,4 @@ else
 fi
 
 # TODO: will fail with newlines in filenames
-exec mpv --playlist <(find "${SELECTED}" -type f ! -name 'cover.*' | ${SORT} | xargs realpath -s) --loop-playlist
+exec mpv --playlist <(find -L "${SELECTED}" -type f ! -name 'cover.*' | ${SORT} | xargs realpath -s) --loop-playlist
