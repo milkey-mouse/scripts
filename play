@@ -2,7 +2,7 @@
 set -o pipefail
 
 cd ~/media/music
-SELECTED="$(find ! \( -type f -name 'cover.*' \) -print0 | fzf --read0 --print0 --filter "$*" | cut -d '' -f1)"
+SELECTED="$(find ! \( -type f -name 'cover.*' \) -print0 | fzf --read0 --print0 --filter "$(tr '-' '!' <<<"$*")" | cut -d '' -f1)"
 if [[ -z "${SELECTED}" ]]; then
   echo "No music matches the query '$*'."
   exit 1
