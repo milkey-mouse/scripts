@@ -15,23 +15,38 @@ exec 3>&1
 exec mvi --really-quiet --force-window --idle --no-input-terminal --input-file=<(
   set -eu
   trap 'echo quit' EXIT
+  trap break PIPE
   trap break INT
 
   if [ ! -z "${MPV_PID}" ]; then
     cd /proc/${MPV_PID}/cwd
   fi
 
+  LASTDIR=""
   while :; do
     METADATA="$(play? 2>/dev/null)"
     [ -z "${METADATA}" ] && break
     (echo "${METADATA}" && echo -ne '\n') >&3
 
+    # TODO: this logic fails with newlines in filenames
+    # we can't just use -0 and -Z everywhere because bash vars can't hold nulls
     PLAYPATH="$(echo "${METADATA}" | grep '^Path:' | cut -d' ' -f2-)"
-    [ -e "${PLAYPATH}" ] && jq -cn '{ "command": ["loadfile", $ARGS.positional[0], "replace"] }' --args "$(realpath "$(dirname "${PLAYPATH}")"/cover.*)"
+    if [ -e "${PLAYPATH}" ]; then
+      PLAYDIR="$(realpath "$(dirname "${PLAYPATH}")")"
+      if [ "${PLAYDIR}" != "${LASTDIR}" ]; then
+        LASTDIR="${PLAYDIR}"
+        COVERS="$(find -L "${PLAYDIR}" -type f -name 'cover*' -exec file --mime-type --no-pad {} \; | grep -Po '^.*(?=: image/[0-9a-z-]*$)')"
+        if [ ! -z "${COVERS}"  ]; then
+          jq -cn '{ "command": ["playlist-clear"] }'
+          jq -cn '{ "command": ["loadfile", $ARGS.positional[0], "replace"] }' --args "$(head -n1 <<< "${COVERS}")"
+          tail -n+2 <<< "${COVERS}" | xargs jq -cn '$ARGS.positional[] | { "command": ["loadfile", ., "append"] }' --args
+        fi
+      fi
+    fi
 
     nc -U ~/.config/mpv/socket 2>/dev/null | jq --unbuffered 'select(.event=="metadata-update")' | : &
     wait -n $! $$
     # check if the pipe is broken (i.e. if our parent mpv has exited)
-    echo 2>&1 || break
+    echo 2>/dev/null || break
   done
 )
