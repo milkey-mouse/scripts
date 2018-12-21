@@ -1,9 +1,23 @@
 #!/bin/sh
 # play?: print metadata for what mpv is playing
-set -o pipefail
+set -euo pipefail
 
-echo '{ "command": ["get_property", "path"] }' | nc -Uw 1 ~/.config/mpv/socket | \
-head -n1 | jq -r '"Path: " + .data'
+TMPFILE="$(mktemp -ut mpv-pid.XXXXX)"
+mkfifo "${TMPFILE}"
+jq -cn '{"command":["run", "bash", "-c", "echo $PPID > " + $ARGS.positional[0]]}' --args "${TMPFILE}" | \
+nc -Uw 1 ~/.config/mpv/socket | head -n1 >/dev/null
+MPV_PID="$(cat "${TMPFILE}")"
+rm -f "${TMPFILE}"
+
+if [ ! -z "${MPV_PID}" ]; then
+  cd /proc/${MPV_PID}/cwd
+fi
+
+MEDIA_PATH="$(echo '{ "command": ["get_property", "path"] }' | nc -Uw 1 ~/.config/mpv/socket | head -n1 | jq -r '.data')"
+if [ -e "${MEDIA_PATH}" ]; then
+  MEDIA_PATH="$(realpath -s "${MEDIA_PATH}")"
+fi
+echo "Path: ${MEDIA_PATH}"
 
 echo '{ "command": ["get_property", "filtered-metadata"] }' | nc -Uw 1 ~/.config/mpv/socket | \
 head -n1 | jq -r '.data | keys_unsorted[] as $k | "\($k): \(.[$k])"'
