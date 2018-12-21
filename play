@@ -2,7 +2,7 @@
 set -o pipefail
 
 cd ~/media/music
-SELECTED="$(find ! \( -type f -name 'cover.*' \) -print0 | fzf --read0 --print0 --filter "$(tr '-' '!' <<<"$*")" | cut -d '' -f1)"
+SELECTED="$(find ! \( -type f -name 'cover.*' \) ! -path '*/.*' -print0 | fzf --read0 --print0 --filter "$(tr '-' '!' <<<"$*")" | cut -d '' -f1)"
 if [[ -z "${SELECTED}" ]]; then
   echo "No music matches the query '$*'."
   exit 1
@@ -15,4 +15,8 @@ else
 fi
 
 # TODO: will fail with newlines in filenames
-exec mpv --playlist <(find -L "${SELECTED}" -type f ! -name 'cover.*' | ${SORT} | xargs realpath -s) --loop-playlist
+exec mpv --idle --loop-playlist --input-file=<(
+    find -L "${SELECTED}" -type f ! -path '*/.*' -print0 | ${SORT} -z | \
+    xargs -0n32 file --mime-type --no-pad | grep -Po '^.*(?=: audio/[a-z]*$)' | \
+    xargs -n32 jq -cn '$ARGS.positional[] | { "command": ["loadfile", ., "append-play"] }' --args
+)
