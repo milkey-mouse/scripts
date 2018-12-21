@@ -1,18 +1,33 @@
 #!/bin/bash
 # cover: show album covers for currently playing music
 # create alias for stdout for subshell
+
+# try to move to mpv's working  directory in case media paths are based on it
+
+TMPFILE="$(mktemp -ut mpv-pid.XXXXX)"
+mkfifo "${TMPFILE}"
+jq -cn '{"command":["run", "bash", "-c", "echo $PPID > " + $ARGS.positional[0]]}' --args "${TMPFILE}" | \
+nc -Uw 1 ~/.config/mpv/socket | head -n1 >/dev/null
+MPV_PID="$(cat "${TMPFILE}")"
+rm -f "${TMPFILE}"
+
 exec 3>&1
 exec mvi --really-quiet --force-window --idle --no-input-terminal --input-file=<(
   set -eu
   trap 'echo quit' EXIT
   trap break INT
+
+  if [ ! -z "${MPV_PID}" ]; then
+    cd /proc/${MPV_PID}/cwd
+  fi
+
   while :; do
     METADATA="$(play? 2>/dev/null)"
     [ -z "${METADATA}" ] && break
     (echo "${METADATA}" && echo -ne '\n') >&3
 
     PLAYPATH="$(echo "${METADATA}" | grep '^Path:' | cut -d' ' -f2-)"
-    [ -e "${PLAYPATH}" ] && jq -cn '{ "command": ["loadfile", $ARGS.positional[0], "replace"] }' --args "$(dirname "${PLAYPATH}")"/cover.*
+    [ -e "${PLAYPATH}" ] && jq -cn '{ "command": ["loadfile", $ARGS.positional[0], "replace"] }' --args "$(realpath "$(dirname "${PLAYPATH}")"/cover.*)"
 
     nc -U ~/.config/mpv/socket 2>/dev/null | jq --unbuffered 'select(.event=="metadata-update")' | : &
     wait -n $! $$
