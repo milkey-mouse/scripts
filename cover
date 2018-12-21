@@ -14,6 +14,9 @@ exec mvi --really-quiet --force-window --idle --no-input-terminal --input-file=<
     PLAYPATH="$(echo "${METADATA}" | grep '^Path:' | cut -d' ' -f2-)"
     [ -e "${PLAYPATH}" ] && jq -cn '{ "command": ["loadfile", $ARGS.positional[0], "replace"] }' --args "$(dirname "${PLAYPATH}")"/cover.*
 
-    nc -U ~/.config/mpv/socket 2>/dev/null | jq --unbuffered 'select(.event=="metadata-update")' | :
+    nc -U ~/.config/mpv/socket 2>/dev/null | jq --unbuffered 'select(.event=="metadata-update")' | : &
+    wait -n $! $$
+    # check if the pipe is broken (i.e. if our parent mpv has exited)
+    echo 2>&1 || break
   done
 )
