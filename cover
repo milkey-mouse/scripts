@@ -2,7 +2,7 @@
 # cover: show album covers for currently playing music
 # create alias for stdout for subshell
 
-# try to move to mpv's working  directory in case media paths are based on it
+# try to move to mpv's working directory in case media paths are based on it
 
 TMPFILE="$(mktemp -ut mpv-pid.XXXXX)"
 mkfifo "${TMPFILE}"
@@ -12,34 +12,55 @@ MPV_PID="$(cat "${TMPFILE}")"
 rm -f "${TMPFILE}"
 
 exec 3>&1
-exec mvi --really-quiet --force-window --idle --no-input-terminal --input-file=<(
+exec mvi --really-quiet --force-window --idle=yes --no-input-terminal --input-file=<(
   set -eu
-  trap 'echo quit' EXIT
-  trap break PIPE
-  trap break INT
+  trap 'echo quit 2>/dev/null' EXIT
+  trap 'break 2>/dev/null || exit' PIPE
+  trap 'break 2>/dev/null || exit' INT
 
   if [ ! -z "${MPV_PID}" ]; then
     cd /proc/${MPV_PID}/cwd
   fi
 
+  clear-playlist() {
+    jq -cn '{ "command": ["playlist-clear"] }'
+    jq -cn '{ "command": ["playlist-remove", "current"] }'
+  }
+
+  replace-playlist() {
+    # we can't/shouldn't just tell mpv to load a new playlist from a temporary
+    # file because filenames with newlines, spaces, etc. must be escaped, and
+    # only the JSON API provides for that
+    jq -cn '{ "command": ["loadfile", $ARGS.positional[0], "replace"] }' --args "$(head -n1 <<< "$1")"
+    jq -cn '{ "command": ["playlist-clear"] }'
+    tail -n+2 <<< "$1" | xargs jq -cn '$ARGS.positional[] | { "command": ["loadfile", ., "append"] }' --args
+  }
+
   LASTDIR=""
   while :; do
-    METADATA="$(play? 2>/dev/null)"
-    [ -z "${METADATA}" ] && break
-    (echo "${METADATA}" && echo -ne '\n') >&3
+    # there is a race condition with mpv's responses over the socket. retry
+    # play? a few times in case it doesn't work.
+    for i in {1..3}; do
+      METADATA="$(play? 2>&3)" && break || sleep 0.1 || sleep 1
+    done
+    if [ -z "${METADATA}" ]; then
+      clear-playlist
+    else
+      (echo "${METADATA}" && echo -ne '\n') >&3
 
-    # TODO: this logic fails with newlines in filenames
-    # we can't just use -0 and -Z everywhere because bash vars can't hold nulls
-    PLAYPATH="$(echo "${METADATA}" | grep '^Path:' | cut -d' ' -f2-)"
-    if [ -e "${PLAYPATH}" ]; then
-      PLAYDIR="$(realpath "$(dirname "${PLAYPATH}")")"
-      if [ "${PLAYDIR}" != "${LASTDIR}" ]; then
-        LASTDIR="${PLAYDIR}"
-        COVERS="$(find -L "${PLAYDIR}" -type f -name 'cover*' -exec file --mime-type --no-pad {} \; | grep -Po '^.*(?=: image/[0-9a-z-]*$)')"
-        if [ ! -z "${COVERS}"  ]; then
-          jq -cn '{ "command": ["playlist-clear"] }'
-          jq -cn '{ "command": ["loadfile", $ARGS.positional[0], "replace"] }' --args "$(head -n1 <<< "${COVERS}")"
-          tail -n+2 <<< "${COVERS}" | xargs jq -cn '$ARGS.positional[] | { "command": ["loadfile", ., "append"] }' --args
+      # TODO: this logic fails with newlines in filenames
+      # we can't just use -0 and -Z everywhere because bash vars can't hold nulls
+      PLAYPATH="$(echo "${METADATA}" | grep '^Path:' | cut -d' ' -f2-)"
+      if [ -e "${PLAYPATH}" ]; then
+        PLAYDIR="$(realpath "$(dirname "${PLAYPATH}")")"
+        if [ "${PLAYDIR}" != "${LASTDIR}" ]; then
+          LASTDIR="${PLAYDIR}"
+          COVERS="$(find -L "${PLAYDIR}" -type f -name 'cover*' -exec file --mime-type --no-pad {} \; | grep -Po '^.*(?=: image/[0-9a-z-]*$)' || true)"
+          if [ -z "${COVERS}"  ]; then
+            clear-playlist
+          else
+            replace-playlist "${COVERS}"
+          fi
         fi
       fi
     fi
