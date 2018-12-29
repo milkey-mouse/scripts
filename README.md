@@ -20,4 +20,12 @@ are some of the best scripts in this repo:
  - [`play`](play) search for and play music with mpv simply
  - [`play?`](play?) query metadata for currently playing music
  - [`singleton`](singleton) kill old instances of a program so one copy runs at a time
- - [`switch_focus`](switch_focus) global Alt-Tab for Sway
+ - [`switch_focus`](switch_focus) global Alt-Tab for [sway](https://swaywm.org)
+
+# Dependencies
+
+All of these scripts have a dependency on the coreutils (find, grep, etc.).
+Many of them need these additional programs to run:
+
+ - [fzf](https://github.com/junegunn/fzf)
+ - [jq](https://stedolan.github.io/jq)
