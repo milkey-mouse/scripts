@@ -4,6 +4,7 @@ set -euo pipefail
 
 TMPFILE="$(mktemp -ut mpv-pid.XXXXX)"
 mkfifo "${TMPFILE}"
+trap 'rm -f "${TMPFILE}"' EXIT
 jq -cn '{"command":["run", "bash", "-c", "echo $PPID > " + $ARGS.positional[0]]}' --args "${TMPFILE}" | \
 nc -Uw 1 ~/.config/mpv/socket | head -n1 >/dev/null
 MPV_PID="$(cat "${TMPFILE}")"
