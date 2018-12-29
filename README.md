@@ -16,11 +16,11 @@ are some of the best scripts in this repo:
 
  - [`cover`](cover): display album covers for music playing in mpv
  - [`licenser`](licenser): put a license in your project with one command
- - [`fzf_run`](fzf_run) replace dmenu with a normal terminal & fzf
- - [`play`](play) search for and play music with mpv simply
- - [`play?`](play?) query metadata for currently playing music
- - [`singleton`](singleton) kill old instances of a program so one copy runs at a time
- - [`switch_focus`](switch_focus) global Alt-Tab for [sway](https://swaywm.org)
+ - [`fzf_run`](fzf_run): replace dmenu with a normal terminal & fzf
+ - [`play`](play): search for and play music with mpv simply
+ - [`play?`](play?): query metadata for currently playing music
+ - [`singleton`](singleton): kill old instances of a program so one copy runs at a time
+ - [`switch_focus`](switch_focus): global Alt-Tab for [sway](https://swaywm.org)
 
 # Dependencies
 
