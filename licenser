@@ -1,0 +1,113 @@
+#!/bin/sh
+# licenser: extract a license from choosealicense.com into the current directory
+set -o pipefail
+
+# metadata to put in license text
+YEAR="${YEAR-$(date '+%Y')}"
+NAME="${NAME-$(
+  # ask git for the user's name
+  git config user.name || \
+  # try getting the user's /etc/passwd real name
+  # (grep is used so an empty string fails/falls back)
+  getent passwd `whoami` | cut -d : -f 5 | grep '.' || \
+  # fall back to just username
+  echo $USER
+)}" 2>/dev/null
+
+LICENSE_DIR="${LICENSE_DIR:-$HOME/.cache/licenser}"
+LICENSE_LIST_URL="https://api.github.com/repos/github/choosealicense.com/contents/_licenses"
+LICENSE_URL="https://raw.githubusercontent.com/github/choosealicense.com/gh-pages/_licenses"
+
+mkdir -p "${LICENSE_DIR}" || exit 1
+
+list_licenses() {
+  # use the GitHub API to list all available licenses
+  curl -Ssf "${LICENSE_LIST_URL}" | jq -r '.[].name' | grep '.txt$'
+}
+
+list_cached_licenses() {
+  find "${LICENSE_DIR}" -type f -name '*.txt'
+}
+
+get_license() {
+  if [ -e "${LICENSE_DIR}/$1" ]; then
+    cat "${LICENSE_DIR}/$1"
+  else
+    curl -Ssf "${LICENSE_URL}/$1" | tee "${LICENSE_DIR}/$1" && return 0
+    rm -f "${LICENSE_DIR}/$1" && return 1
+  fi
+}
+
+usage() {
+  echo "Usage: $(basename $0) LICENSE [FILE]"
+  cut -b5- >&2 <<'EOF'
+    Add a LICENSE file to the current directory.
+
+    With no FILE specified, the license will be written to a file called
+    LICENSE in the current directory. When FILE is -, the license will be
+    written to standard output.
+
+    LICENSE is the SPDX ID of the license, which may be any of the following:
+EOF
+  (list_licenses || list_cached_licenses) 2>/dev/null | sed 's/.txt$//;s/^/  /'
+  cut -b5- >&2 <<'EOF'
+
+    By default, the current year and user's name are inserted into the license.
+    You can change the year and name used with the YEAR and NAME environment
+    variables. To leave the license as-is with placeholders for name & year,
+    set the environment variables YEAR and NAME to nothing.
+EOF
+}
+
+# ask_yn [error] [prompt] [default]
+ask_yn() {
+  echo -n "$1"
+  [ ! -t 0 ] && echo -ne '\n' && return ${3:-1}
+  echo -n " $2 (Y/N): " >&2
+  while :; do
+    read answer
+    case "${answer}" in
+      [Yy]* ) return 0;;
+      [Nn]* ) return 1;;
+      * ) echo -n "Please answer Y or N: " >&2;;
+    esac
+  done
+}
+
+if [ $# == 0 ]; then
+  usage
+  exit 1
+elif echo "$*" | grep -Fwq -- $'-h\n--help'; then
+  # -h or --help has been specified
+  usage
+  exit 0
+fi
+
+SPDX="$(echo "$1" | tr [:upper:] [:lower:])"
+
+FILENAME="${2:-LICENSE}"
+if [ "${FILENAME}" == "-" ]; then
+  FILENAME="/dev/stdout"
+elif [ -e "${FILENAME}" ]; then
+  ask_yn "The file '${FILENAME}' already exists." "Overwrite?" || exit 1
+fi
+
+(
+  if ! get_license "${SPDX}.txt" 2>/dev/null; then
+    MATCHING="$((list_licenses || list_cached_licenses) 2>/dev/null | grep "^${SPDX}")"
+    if [ "$(echo "${MATCHING}" | wc -l)" == "1" ]; then
+      get_license "${MATCHING}"
+    else
+      (
+        echo "There are multiple licenses matching '$1':"
+        echo "${MATCHING}" | sed 's/.txt$//;s/^/  /'
+        echo "Try again with one of the listed licenses."
+      ) >&2
+      exit 1
+    fi
+  fi
+) | tail -n+2 | sed -e '1,/---/ d' | tail -n+2 | (
+  [ -z "${YEAR}" ] && cat || sed "s/\[year\]/${YEAR}/"
+) | (
+  [ -z "${NAME}" ] && cat || sed "s/\[\(fullname\|name\)\]/${NAME}/g"
+) > "${FILENAME}"
