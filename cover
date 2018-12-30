@@ -1,6 +1,7 @@
 #!/bin/bash
 # cover: show album covers for currently playing music
 # create alias for stdout for subshell
+set -euo pipefail
 
 # try to move to mpv's working directory in case media paths are based on it
 
@@ -65,7 +66,7 @@ exec mvi --really-quiet --force-window --idle=yes --no-input-terminal --input-fi
       fi
     fi
 
-    nc -U ~/.config/mpv/socket 2>/dev/null | jq --unbuffered 'select(.event=="metadata-update")' | : &
+    nc -U ~/.config/mpv/socket 2>/dev/null | jq -n 'while(.event!="metadata-update"; input)' >/dev/null 2>&1 &
     wait -n $! $$
     # check if the pipe is broken (i.e. if our parent mpv has exited)
     echo 2>/dev/null || break
