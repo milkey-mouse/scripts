@@ -69,7 +69,11 @@ exec mvi --really-quiet --force-window --idle=yes --no-input-terminal --input-fi
         PLAYDIR="$(realpath "$(dirname "${PLAYPATH}")")"
         if [ "${PLAYDIR}" != "${LASTDIR}" ]; then
           LASTDIR="${PLAYDIR}"
-          COVERS="$(find -L "${PLAYDIR}" -type f -name 'cover*' -exec file --dereference --mime-type --no-pad {} \; | grep -Po '^.*(?=: image/[0-9a-z-]*$)' || true)"
+          COVERS="$(
+            find -L "${PLAYDIR}" -type f -name 'cover*' -exec \
+              file --dereference --mime-type --no-pad {} \; | \
+            grep -Po '^.*(?=: image/[0-9a-z-]*$)' || true
+          )"
           if [ -z "${COVERS}"  ]; then
             clear-playlist
           else
