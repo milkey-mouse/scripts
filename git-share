@@ -1,0 +1,14 @@
+#!/bin/sh
+# git-share: allow a sandboxed git SSH user to access a certain repo
+# see https://github.com/milkey-mouse/git-shell-enforce-directory
+set -euo pipefail
+
+REPO="$(git rev-parse --show-toplevel)"
+
+# allow git group to access
+chgrp -R git "${REPO}"
+find "${REPO}" -type d -execdir chmod g+xs {} \;
+find "${REPO}" -type f -execdir chmod g+rw {} \;
+
+# link to whitelisted git home dir
+ln -s "${REPO}" ~git/"$(basename "${REPO}")"
