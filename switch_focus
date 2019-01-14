@@ -1,12 +1,10 @@
 #!/bin/sh
 # switch_focus: alt-tab for sway
 
-#WINDOWS="$(swaymsg -t get_tree | jq -c '(.nodes[].nodes[].nodes | sort_by(.rect.x) | map([.id, .focused]))[]')"
-#WINDOWS="$(swaymsg -t get_tree | jq -c '(.nodes[1:] | map(.nodes) | add | map(.nodes) | add | map(.nodes) | add | map(.nodes) | add | map([.id, .focused]))[]')"
-WINDOWS="$(swaymsg -t get_tree | jq -c '[while(.focused | not; .nodes[]?)][-2].nodes | sort_by(.rect.x) | map([.id, .focused])[]')"
+WINDOWS="$(swaymsg -t get_tree | jq -c '[while(.focused | not; .nodes[]?)][-3].nodes | sort_by(.rect.x) | map([.id, .focused])[]')"
 
 [ "$1" = "-r" ] && WINDOWS="$(tac <<< "${WINDOWS}")"
 
 ID="$((echo "${WINDOWS}" && echo "${WINDOWS}") | grep -A2 '\[[0-9]*,true\]' | head -n2 | tail -n1 | cut -d, -f1 | tail -c+2)"
 
-swaymsg "[con_id=${ID}]" focus > /dev/null
+swaymsg "[con_id=${ID}]" focus >/dev/null
