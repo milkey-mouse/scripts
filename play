@@ -16,7 +16,7 @@ fi
 
 # TODO: will fail with newlines in filenames
 exec mpv --idle --loop-playlist --input-file=<(
-    find -L "${SELECTED}" -type f ! -path '*/.*' -print0 | ${SORT} -z | \
-    xargs -0n32 file --mime-type --no-pad | grep -Po '^.*(?=: (audio|video)/[0-9a-z-]*$)' | \
-    xargs -n32 jq -cn '$ARGS.positional[] | { "command": ["loadfile", ., "append-play"] }' --args
+  find -L "${SELECTED}" -type f ! -path '*/.*' -print0 | ${SORT} -z | \
+  xargs -0n32 file --mime-type --no-pad | grep -Po '^.*(?=: (audio|video)/[0-9a-z-]*$)' | \
+  xargs -n32 jq -cn '$ARGS.positional[] | { "command": ["loadfile", ., "append-play"] }' --args
 )
