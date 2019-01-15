@@ -7,8 +7,8 @@ REPO="$(git rev-parse --show-toplevel)"
 
 # allow git group to access
 chgrp -R git "${REPO}"
-find "${REPO}" -type d -execdir chmod g+xs {} \;
+find "${REPO}" -type d -execdir chmod g+rwxs {} \;
 find "${REPO}" -type f -execdir chmod g+rw {} \;
 
 # link to whitelisted git home dir
-ln -s "${REPO}" ~git/"$(basename "${REPO}")"
+[ -e ~git/"$(basename "${REPO}")" ] || ln -s "${REPO}" ~git/"$(basename "${REPO}")"
