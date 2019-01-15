@@ -1,7 +1,7 @@
 #!/bin/sh
 # switch_focus: alt-tab for sway
 
-WINDOWS="$(swaymsg -t get_tree | jq -c '[while(.focused | not; .nodes[]?)][-3].nodes | sort_by(.rect.x) | map([.id, .focused])[]')"
+WINDOWS="$(swaymsg -t get_tree | jq -c '[while(.focused == false; .nodes[]?) | select(.type == "workspace" and .focus != [])][0] | recurse(.nodes[]?) | select(.nodes == []) | [.id, .focused]')"
 
 [ "$1" = "-r" ] && WINDOWS="$(tac <<< "${WINDOWS}")"
 
