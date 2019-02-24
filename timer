@@ -2,11 +2,10 @@
 set -euo pipefail
 
 if [ "$#" == "0" ]; then
-  pgrep -axu "${UID}" timer | grep -v "^$$" | sed 's#/.*/timer#timer#g'
+  pgrep -axu "${UID}" timer | grep -v "^$$" | sed 's#/.*/timer\( --bg\)*#timer#g;'
   exit 0
 elif [ "$1" != "--bg" ]; then
-  swaymsg exec -- "$0" --bg "$@"
-  exit 0
+  swaymsg exec -- "$0" --bg "$@" && exit 0
 else
   shift
 fi
