@@ -1,0 +1,22 @@
+#!/bin/sh
+set -euo pipefail
+
+if [ "$#" == "0" ]; then
+  pgrep -axu "${UID}" timer | grep -v "^$$" | sed 's#/.*/timer#timer#g'
+  exit 0
+elif [ "$1" != "--bg" ]; then
+  swaymsg exec -- "$0" --bg "$@"
+  exit 0
+else
+  shift
+fi
+
+TIME="$(echo "$1" | sed 's/\([0-9]\)$/\1m/')"
+sleep "${TIME}"
+shift
+
+MSG="$*"
+if [ -z "${MSG}" ]; then
+  MSG="${TIME} timer up!"
+fi
+swaynag -m "${MSG}"
