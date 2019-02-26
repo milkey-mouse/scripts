@@ -10,8 +10,27 @@ else
   shift
 fi
 
-TIME="$(echo "$1" | sed 's/\([0-9]\)$/\1m/')"
-sleep "${TIME}"
+sleep_for_interval() {
+  TIME="$(echo "$1" | sed 's/\([0-9]\)$/\1m/')"
+  sleep "${TIME}" 2>/dev/null
+}
+
+sleep_to_date() {
+  CURRENT_TIME="$(date +%s)"
+  TARGET_TIME="$(date -d "$1" +%s 2>/dev/null)"
+  if (( ${TARGET_TIME} < ${CURRENT_TIME} )); then
+    # don't set a timer in the past!
+    # the cause is likely a 12-hour format being parsed as 24.
+    if echo "$1" | grep -vq 'PM$'; then
+      TARGET_TIME="$(date -d "$1 PM" +%s 2>/dev/null)"
+    fi
+  fi
+  TIME="$(( ${TARGET_TIME} - ${CURRENT_TIME} ))s"
+  sleep "${TIME}"
+  TIME="$1"  # for MSG
+}
+
+sleep_for_interval "$1" || sleep_to_date "$1"
 shift
 
 MSG="$*"
