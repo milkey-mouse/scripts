@@ -33,6 +33,12 @@ sleep_to_date() {
 sleep_for_interval "$1" || sleep_to_date "$1"
 shift
 
+# TODO: swaymsg exec does not preserve TIMER_SOUND value
+TIMER_SOUND="${TIMER_SOUND:-/usr/local/share/sounds/timer/ding.wav}"
+if [ -f "${TIMER_SOUND}" ]; then
+  aplay "${TIMER_SOUND}" &
+fi
+
 MSG="$*"
 if [ -z "${MSG}" ]; then
   MSG="${TIME} timer up!"
