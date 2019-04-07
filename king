@@ -1,0 +1,3 @@
+#!/bin/sh
+
+exec mpv https://classicalking.streamguys1.com/king-fm-mp3
