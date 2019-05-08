@@ -3,6 +3,7 @@
 # see https://github.com/milkey-mouse/git-shell-enforce-directory
 set -euo pipefail
 
+git config core.sharedRepository group
 REPO="$(git rev-parse --show-toplevel)"
 
 # allow git group to access
