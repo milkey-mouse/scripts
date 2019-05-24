@@ -8,8 +8,11 @@ REPO="$(git rev-parse --show-toplevel)"
 
 # allow git group to access
 chgrp -R git "${REPO}"
-find "${REPO}" -type d -execdir chmod g+rwxs {} \;
-find "${REPO}" -type f -execdir chmod g+rw {} \;
+find "${REPO}" -type d -execdir chmod g+rwxs {} +
+find "${REPO}" -type f -execdir chmod g+rw {} +
+
+# git pack files should be immutable
+find "${REPO}/.git/objects/pack" -type f -execdir chmod g-w {} +
 
 # link to whitelisted git home dir
 [ -e ~git/"$(basename "${REPO}")" ] || ln -s "${REPO}" ~git/"$(basename "${REPO}")"
