@@ -1,7 +1,5 @@
 #!/bin/bash
 
-echo -e "\033]2;fzf_run-dd63e1b3cec164442d3c3d616b964bbc0d04f28f1bd134a898c5aba9c0cb6e23\007"
-
 RUN_HISTORY="$HOME/.cache/fzf_run"
 CMD_PREFIX="swaymsg exec"
 
