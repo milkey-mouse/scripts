@@ -1,7 +1,0 @@
-#!/bin/bash
-set -euo pipefail
-
-rm -v /boot/EFI/gentoo/prevkernel.efi || /bin/true
-mv -v /boot/EFI/gentoo/kernel.efi /boot/EFI/gentoo/prevkernel.efi
-sbsign --key /etc/efikeys/db.key --cert /etc/efikeys/db.crt --output /boot/EFI/gentoo/kernel.efi "/boot/kernel-genkernel-x86_64-$(readlink -f /usr/src/linux | cut -d- -f2-)"
-rm -v /boot/kernel-* /boot/System.map-*

@@ -1,0 +1,186 @@
+#!/bin/bash
+set -euo pipefail
+#set -x
+
+MAKEOPTS="${MAKEOPTS:-$(portageq envvar MAKEOPTS)}"
+NICENESS="${NICENESS:-$(portageq envvar PORTAGE_NICENESS)}"
+
+ORIGINAL_MAKE="$(which make)"
+make() {
+    "${ORIGINAL_MAKE}" "$@" "${MAKEOPTS}"
+}
+
+if [ ! -z "${NICENESS}" ]; then
+    echo "Setting niceness to ${NICENESS}"
+    renice "${NICENESS}" $$ > /dev/null
+fi
+
+strip_config_vars() {
+    sed -n 's/^\([^#].*\)=.*$/\1/p;s/^# \(.*\) is not set$/\1/p' "$@" | sort -u
+}
+
+clean_src() {
+    echo "Cleaning source directory"
+    if [ -e .config ]; then
+        make clean
+    else
+        make mrproper
+    fi
+}
+
+stderr_tee() {
+    while IFS='' read -n 1 -d '' c; do
+        printf '%s' "${c}"
+        printf '%s' "${c}" 1>&2
+    done
+}
+
+setup_config() {
+    if [ -f .config ]; then
+        echo ".config exists, we won't touch it"
+    else
+        if [ -e .config ]; then
+            echo "wat: .config exists, but is not a regular file"
+            exit 1
+        else
+            echo "Copying config from running kernel"
+            gzip -cd /proc/config.gz > .config
+
+            echo "Running make olddefconfig"
+            if LANG="C" LC_ALL="C" make olddefconfig | stderr_tee | grep -q '^# No change to'; then
+                echo "Nothing new in this config."
+            else
+                CONFIG_VARS="sed -n 's/^\([^#].*\)=.*$/\1/p;s/^# \(.*\) is not set$/\1/p'"
+
+                echo "New config parameters were set to their defaults:"
+                GREP_COLOR="01;32" grep -F --color=always "$(diff <(gzip -cd /proc/config.gz | strip_config_vars) <(strip_config_vars .config) | sed -n 's/^> \(.*\)$/\1/p')" .config | grep -E --color=always 'y?$'
+            fi
+        fi
+    fi
+}
+
+set_initramfs_location() {
+    echo "Fixing CONFIG_INITRAMFS_SOURCE"
+    sed -i 's#^CONFIG_INITRAMFS_SOURCE=.*$#CONFIG_INITRAMFS_SOURCE="'"$1"'"#' .config
+}
+
+gen_init_cpio() {
+    pushd usr
+    make gen_init_cpio > /dev/null
+    popd
+
+    FILENAME="$1"; shift
+    awk '!x[$2]++' "$FILENAME" | ./usr/gen_init_cpio - "$@"
+}
+
+build_initramfs() {
+    echo "Building initramfs"
+
+    INIT_LOCATION="$(mktemp)"
+
+    cat > "${INIT_LOCATION}" <<'EOF'
+#!/bin/sh
+set -euo pipefail
+
+panic() {
+    echo "The kernel will panic as soon as you press Enter."
+    read
+}
+trap panic EXIT
+
+export PATH=/bin
+mount -t sysfs -o nodev,noexec,nosuid sysfs /sys
+mount -t proc -o nodev,noexec,nosuid proc /proc
+
+alias cryptsetup="cryptsetup --disable-locks"
+
+CRYPT_ROOT="$(sed -n 's/^.*crypt_root=\([^ $]*\).*$/\1/p' /proc/cmdline)"
+if [ -z "${CRYPT_ROOT}" ]; then
+    echo "crypt_root was not specified on the command line."
+    echo -n "Contents of /proc/cmdline: "; cat /proc/cmdline
+    exit 1
+fi
+
+if ! cryptsetup isLuks "${CRYPT_ROOT}"; then
+    echo "crypt_root was not identified as a LUKS device."
+    exit 1
+fi
+
+while ! cryptsetup luksOpen "${CRYPT_ROOT}" root; do
+    echo "Could not open ${CRYPT_ROOT}. Trying again..."
+done
+echo "Opened ${CRYPT_ROOT} as /dev/mapper/root."
+
+if ! mount /dev/mapper/root /mnt; then
+    echo "Could not mount /dev/mapper/root."
+    exit 1
+fi
+
+echo "Switching to new root..."
+exec switch_root /mnt /sbin/init
+EOF
+
+    OLD_TRAPS="$(trap)"
+    cleanup() {
+        rm -f "${INIT_LOCATION}"
+
+        trap - RETURN
+        eval "${OLD_TRAPS}"
+    }
+    trap cleanup RETURN
+
+    gen_init_cpio - > "${INITRAMFS_LOCATION}" <<EOF
+# devices
+dir /dev 0755 0 0
+nod /dev/console 660 0 0 c 5 1
+nod /dev/null 666 0 0 c 1 3
+nod /dev/zero 666 0 0 c 1 5
+nod /dev/tty0 600 0 0 c 4 0
+nod /dev/tty1 600 0 0 c 4 1
+# base layout
+#dir /.initrd
+dir /bin 0755 0 0
+dir /mnt 0755 0 0
+dir /proc 0555 0 0
+dir /sys 0555 0 0
+dir /tmp 1777 0 0
+# busybox
+file /bin/cryptsetup /sbin/cryptsetup 0755 0 0
+file /bin/busybox /bin/busybox 0755 0 0
+slink /bin/sh busybox 0777 0 0
+file /init ${INIT_LOCATION} 0755 0 0
+EOF
+
+    cpio -itvnF "${INITRAMFS_LOCATION}" 2>/dev/null
+
+    # TODO: support blkid naming
+    # BusyBox has a blkid applet
+}
+
+build_kernel() {
+    echo "Building kernel"
+    make bzImage
+}
+
+cd /usr/src/linux
+
+clean_src
+setup_config
+
+INITRAMFS_LOCATION="$(mktemp --suffix=.cpio)"
+cleanup() {
+    rm -f "${INITRAMFS_LOCATION}"
+}
+trap cleanup EXIT
+
+build_initramfs "${INITRAMFS_LOCATION}"
+set_initramfs_location "${INITRAMFS_LOCATION}"
+build_kernel "${INITRAMFS_LOCATION}"
+
+echo "Kernel built successfully. Signing and installing."
+
+sbsign --key /etc/efikeys/db.key --cert /etc/efikeys/db.crt --output /boot/EFI/gentoo/newkernel.efi arch/x86/boot/bzImage
+
+cd /boot/EFI/gentoo
+mv -v kernel.efi prevkernel.efi
+mv -v newkernel.efi kernel.efi
