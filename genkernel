@@ -20,7 +20,7 @@ strip_config_vars() {
 
 clean_src() {
     echo "Cleaning source directory"
-    if [ -e .config ]; then
+    if [ -e .config ] && [ "${MRPROPER}" -ne "1" ]; then
         make clean
     else
         make mrproper
@@ -184,10 +184,45 @@ build_kernel() {
     make bzImage
 }
 
+usage() {
+    echo "usage: genkernel [--help] [--mrproper] [--menuconfig]"
+}
+
+MENUCONFIG=0
+MRPROPER=0
+set +u
+while :; do
+    case "$1" in
+    "")
+        break
+        ;;
+    "--menuconfig")
+        MENUCONFIG=1
+        ;;
+    "--mrproper")
+        MRPROPER=1
+        ;;
+    "-h"|"--help")
+        usage
+        exit
+        ;;
+    *)
+        usage
+        exit 1
+        ;;
+    esac
+    shift
+done
+set -u
+
 cd /usr/src/linux
 
 clean_src
 setup_config
+
+if [ "${MENUCONFIG}" -eq "1" ]; then
+    make menuconfig
+fi
 
 INITRAMFS_LOCATION="$(mktemp --suffix=.cpio)"
 cleanup() {
