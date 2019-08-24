@@ -185,11 +185,12 @@ build_kernel() {
 }
 
 usage() {
-    echo "usage: genkernel [--help] [--mrproper] [--menuconfig]"
+    echo "usage: genkernel [--help] [--noinstall] [--mrproper] [--menuconfig]"
 }
 
 MENUCONFIG=0
 MRPROPER=0
+INSTALL=1
 set +u
 while :; do
     case "$1" in
@@ -201,6 +202,9 @@ while :; do
         ;;
     "--mrproper")
         MRPROPER=1
+        ;;
+    "--noinstall")
+        INSTALL=0
         ;;
     "-h"|"--help")
         usage
@@ -234,10 +238,14 @@ build_initramfs "${INITRAMFS_LOCATION}"
 set_initramfs_location "${INITRAMFS_LOCATION}"
 build_kernel "${INITRAMFS_LOCATION}"
 
-echo "Kernel built successfully. Signing and installing."
+if [ "${INSTALL}" -eq "1" ]; then
+    echo "Kernel built successfully. Signing and installing."
 
-sbsign --key /etc/efikeys/db.key --cert /etc/efikeys/db.crt --output /boot/EFI/gentoo/newkernel.efi arch/x86/boot/bzImage
+    sbsign --key /etc/efikeys/db.key --cert /etc/efikeys/db.crt --output /boot/EFI/gentoo/newkernel.efi arch/x86/boot/bzImage
 
-cd /boot/EFI/gentoo
-mv -v kernel.efi prevkernel.efi
-mv -v newkernel.efi kernel.efi
+    cd /boot/EFI/gentoo
+    mv -v kernel.efi prevkernel.efi
+    mv -v newkernel.efi kernel.efi
+else
+    echo "Kernel built successfully."
+fi
