@@ -32,22 +32,24 @@ stderr_tee() {
 setup_config() {
     if [ -f .config ]; then
         echo ".config exists, we won't touch it"
+    elif [ -e .config ]; then
+        echo "wat: .config exists, but is not a regular file"
+        exit 1
     else
-        if [ -e .config ]; then
-            echo "wat: .config exists, but is not a regular file"
-            exit 1
-        else
-            echo "Copying config from running kernel"
-            gzip -cd /proc/config.gz > .config
+        echo "Copying config from running kernel"
+        gzip -cd /proc/config.gz > .config
 
-            echo "Running make olddefconfig"
-            if LANG="C" LC_ALL="C" make olddefconfig | stderr_tee | grep -q '^# No change to'; then
+        echo "Running make olddefconfig"
+        if LANG="C" LC_ALL="C" make olddefconfig | stderr_tee | grep -q '^# No change to'; then
+            echo "Nothing new in this config."
+        else
+            NEW_CONFIG_VARS="$(diff <(gzip -cd /proc/config.gz | strip_config_vars) <(strip_config_vars .config) | sed -n 's/^> \(.*\)$/\1/p' || true)"
+
+            if [ -z "${NEW_CONFIG_VARS}" ]; then
                 echo "Nothing new in this config."
             else
-                CONFIG_VARS="sed -n 's/^\([^#].*\)=.*$/\1/p;s/^# \(.*\) is not set$/\1/p'"
-
                 echo "New config parameters were set to their defaults:"
-                GREP_COLOR="01;32" grep -F --color=always "$(diff <(gzip -cd /proc/config.gz | strip_config_vars) <(strip_config_vars .config) | sed -n 's/^> \(.*\)$/\1/p')" .config | grep -E --color=always 'y?$'
+                GREP_COLOR="01;32" grep -F --color=always "${NEW_CONFIG_VARS}" .config | grep -E --color=always 'y?$'
             fi
         fi
     fi
