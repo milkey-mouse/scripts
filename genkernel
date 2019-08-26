@@ -9,11 +9,6 @@ make() {
     "${ORIGINAL_MAKE}" "$@" "${MAKEOPTS}"
 }
 
-if [ ! -z "${NICENESS}" ]; then
-    echo "Setting niceness to ${NICENESS}"
-    renice "${NICENESS}" $$ > /dev/null
-fi
-
 strip_config_vars() {
     sed -n 's/^\([^#].*\)=.*$/\1/p;s/^# \(.*\) is not set$/\1/p' "$@" | sort -u
 }
@@ -218,6 +213,11 @@ while :; do
     shift
 done
 set -u
+
+if [ ! -z "${NICENESS}" ]; then
+    echo "Setting niceness to ${NICENESS}"
+    renice "${NICENESS}" $$ > /dev/null
+fi
 
 cd /usr/src/linux
 
