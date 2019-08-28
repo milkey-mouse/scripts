@@ -1,0 +1,21 @@
+#!/bin/sh
+set -euo pipefail
+
+FORMAT="${FORMAT:-mp3}"
+TMPDIR="$(mktemp -d)"
+cd "${TMPDIR}"
+
+eject -t || true
+
+cdparanoia -B
+find . -type f -name '*.wav' -print0 | xargs -0n1 -P"$(nproc)" sh -c 'ffmpeg -y -i "$1" "$(printf "%s\n" "$1" | sed "s/\.cdda\.wav$/.'"${FORMAT}"'/")" && rm $1' sh
+eject
+
+if pgrep -u "${USER}" picard; then
+    # picard is open already, let the user add the directory
+    echo "CD ripped at ${TMPDIR}"
+else
+    # move somewhere else in case picard wants to delete the empty tmpdir
+    cd ~
+    picard "${TMPDIR}"
+fi
