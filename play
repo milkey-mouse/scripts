@@ -2,16 +2,30 @@
 set -o pipefail
 
 cd ~/media/music
-SELECTED="$(find ! \( -type f -name 'cover.*' \) ! -path '*/.*' -print0 | fzf --read0 --print0 --filter "$(sed 's/--[^ ]*//g;s/-\([^ ]*\)/!\1/g;s/  */ /g;s/^ //;s/ $//;' <<<"$*")" | cut -d '' -f1)"
+
+fzf_find() {
+    find . ! \( -type f -name 'cover.*' \) ! -path '*/.*' -print0
+}
+
+if [[ "$1" == "--interactive" ]]; then
+    FZF_FILTER_OPT="--query"
+    shift
+else
+    FZF_FILTER_OPT="--filter"
+fi
+
+FZF_FILTER="$(sed 's/--[^ ]*//g;s/-\([^ ]*\)/!\1/g;s/  */ /g;s/^ //;s/ $//;' <<<"$*")"
+SELECTED="$(fzf_find | fzf --read0 --print0 ${FZF_FILTER_OPT} "${FZF_FILTER}" | cut -d '' -f1)"
+
 if [[ -z "${SELECTED}" ]]; then
-  echo "No music matches the query '$*'."
-  exit 1
+    echo "No music matches the query '$*'."
+    exit 1
 fi
 
 if [[ "${SELECTED}" == '.' ]]; then
-  SORT=shuf
+    SORT=shuf
 else
-  SORT=sort
+    SORT=sort
 fi
 
 exec mpv --idle --loop-playlist $(grep -oz -- '--[^ ]*' <<<"$*" | tr '\0' ' ') --input-file=<(
