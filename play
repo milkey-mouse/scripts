@@ -14,9 +14,19 @@ else
   SORT=sort
 fi
 
-# TODO: will fail with newlines in filenames
 exec mpv --idle --loop-playlist $(grep -oz -- '--[^ ]*' <<<"$*" | tr '\0' ' ') --input-file=<(
-  find -L "${SELECTED}" -type f ! -path '*/.*' -print0 | ${SORT} -z | \
-  xargs -0n32 file --mime-type --no-pad | grep -Po '^.*(?=: (audio|video)/[0-9a-z-]*$)' | \
-  xargs -n32 jq -cn '$ARGS.positional[] | { "command": ["loadfile", ., "append-play"] }' --args
+    find -L "${SELECTED}" -type f ! -path '*/.*' -print0 | ${SORT} -z | (
+        # the first few files should be added to the playlist ASAP, only then should we increase niceness
+        head -zn8 | xargs -0r file -00Li
+        # TODO: theoretically stdout could be garbled due to unchecked xargs parallelism
+        nice xargs -0rn32 -P$(nproc) file -00Li
+    ) | \
+    while IFS= read -rd '' FPATH && IFS= read -rd '' FTYPE; do
+        FTYPE="${FTYPE:0:6}"
+        if [[ "${FTYPE}" == "audio/" ]] || [[ "${FTYPE}" == "video/" ]]; then
+            # TODO: jq needs a null-delimited lines option, for now we are using normal newlines
+            printf "%s\n" "${FPATH}"
+        fi
+    done | \
+    jq -cR '{ "command": ["loadfile", ., "append-play"] }'
 )
