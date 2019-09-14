@@ -31,16 +31,18 @@ fi
 exec mpv --idle --loop-playlist $(grep -oz -- '--[^ ]*' <<<"$*" | tr '\0' ' ') --input-file=<(
     find -L "${SELECTED}" -type f ! -path '*/.*' -print0 | ${SORT} -z | (
         # the first few files should be added to the playlist ASAP, only then should we increase niceness
-        head -zn8 | xargs -0r file -00Li
+        IFS= read -rd '' f1
+        IFS= read -rd '' f2
+        IFS= read -rd '' f3
+        file -00Li "${f1}" "${f2}" "${f3}"
+
         # TODO: theoretically stdout could be garbled due to unchecked xargs parallelism
-        nice xargs -0rn32 -P$(nproc) file -00Li
-    ) | \
-    while IFS= read -rd '' FPATH && IFS= read -rd '' FTYPE; do
+        nice xargs -0rn32 -P"$(nproc)" file -00Li
+    ) | while IFS= read -rd '' FPATH && IFS= read -rd '' FTYPE; do
         FTYPE="${FTYPE:0:6}"
         if [[ "${FTYPE}" == "audio/" ]] || [[ "${FTYPE}" == "video/" ]]; then
             # TODO: jq needs a null-delimited lines option, for now we are using normal newlines
             printf "%s\n" "${FPATH}"
         fi
-    done | \
-    jq -cR '{ "command": ["loadfile", ., "append-play"] }'
+    done | jq -cR '{ "command": ["loadfile", ., "append-play"] }'
 )
