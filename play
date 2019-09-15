@@ -7,11 +7,14 @@ fzf_find() {
     find . ! \( -type f -name 'cover.*' \) ! -path '*/.*' -print0
 }
 
-if [[ "$1" == "--interactive" ]]; then
+SORT=sort
+FZF_FILTER_OPT="--filter"
+if [[ "$1" == "--shuffle" ]]; then
+    SORT=shuf
+    shift
+elif [[ "$1" == "--interactive" ]]; then
     FZF_FILTER_OPT="--query"
     shift
-else
-    FZF_FILTER_OPT="--filter"
 fi
 
 FZF_FILTER="$(sed 's/--[^ ]*//g;s/-\([^ ]*\)/!\1/g;s/  */ /g;s/^ //;s/ $//;' <<<"$*")"
@@ -24,8 +27,6 @@ fi
 
 if [[ "${SELECTED}" == '.' ]]; then
     SORT=shuf
-else
-    SORT=sort
 fi
 
 exec mpv --idle --loop-playlist $(grep -oz -- '--[^ ]*' <<<"$*" | tr '\0' ' ') --input-file=<(
