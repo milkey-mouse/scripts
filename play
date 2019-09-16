@@ -7,6 +7,63 @@ fzf_find() {
     find . ! \( -type f -name 'cover.*' \) ! -path '*/.*' -print0
 }
 
+fzf_list() {
+    find -L "$1" -type f ! -path '*/.*' -print0
+}
+
+mime_types() {
+    # the first few files should be added to the playlist ASAP
+    # only then should we increase niceness & parallelism
+    readarray -d '' -n4 files
+    file -00Li "${files[@]}"
+
+    # mapreduce in bash lol
+    spawned=1
+    collecting=1
+    NPROC="$(nproc || echo 4)"
+    TMPDIR="$(mktemp -d)"
+    while :; do
+        readarray -d '' -n32 files
+        if [[ "${#files[@]}" == 0 ]]; then
+            break
+        fi
+        #echo "spawning ${spawned}" >&2
+        nice file -00Li "${files[@]}" > "${TMPDIR}/${spawned}" &
+        : $((spawned++))
+        if (( ${spawned} > ${NPROC} )) && (( "$(jobs -p | wc -l)" >= ${NPROC} )); then
+            # if we have spawned more processes than we have cores,
+            # only launch a new one in replacement of another
+            wait -n
+            # print (in order) the output of jobs that finished
+            while ! eval jobs "%${collecting}" >/dev/null 2>&1; do
+                #echo "collecting ${collecting}" >&2
+                cat "${TMPDIR}/${collecting}"
+                rm "${TMPDIR}/${collecting}"
+                : $((collecting++))
+            done
+        fi
+    done
+    while (( ${collecting} < ${spawned} )); do
+        # if the job no longer exists that just means it's completed
+        eval wait "%${collecting}" 2>/dev/null
+        #echo "collecting ${collecting}" >&2
+        cat "${TMPDIR}/${collecting}"
+        rm "${TMPDIR}/${collecting}"
+        : $((collecting++))
+    done
+    rm -rf "${TMPDIR}"
+}
+
+gen_playlist() {
+    while IFS= read -rd '' FPATH && IFS= read -rd '' FTYPE; do
+        FTYPE="${FTYPE:0:6}"
+        if [[ "${FTYPE}" == "audio/" ]] || [[ "${FTYPE}" == "video/" ]]; then
+            # TODO: jq needs a null-delimited lines option, for now we are using normal newlines
+            printf "%s\n" "${FPATH}"
+        fi
+    done | jq -cR '{ "command": ["loadfile", ., "append-play"] }'
+}
+
 SORT=sort
 FZF_FILTER_OPT="--filter"
 if [[ "$1" == "--shuffle" ]]; then
@@ -30,20 +87,5 @@ if [[ "${SELECTED}" == '.' ]]; then
 fi
 
 exec mpv --idle --loop-playlist $(grep -oz -- '--[^ ]*' <<<"$*" | tr '\0' ' ') --input-file=<(
-    find -L "${SELECTED}" -type f ! -path '*/.*' -print0 | ${SORT} -z | (
-        # the first few files should be added to the playlist ASAP, only then should we increase niceness
-        IFS= read -rd '' f1
-        IFS= read -rd '' f2
-        IFS= read -rd '' f3
-        file -00Li "${f1}" "${f2}" "${f3}"
-
-        # TODO: theoretically stdout could be garbled due to unchecked xargs parallelism
-        nice xargs -0rn32 -P"$(nproc)" file -00Li
-    ) | while IFS= read -rd '' FPATH && IFS= read -rd '' FTYPE; do
-        FTYPE="${FTYPE:0:6}"
-        if [[ "${FTYPE}" == "audio/" ]] || [[ "${FTYPE}" == "video/" ]]; then
-            # TODO: jq needs a null-delimited lines option, for now we are using normal newlines
-            printf "%s\n" "${FPATH}"
-        fi
-    done | jq -cR '{ "command": ["loadfile", ., "append-play"] }'
+    fzf_list "${SELECTED}" | "${SORT}" -z | mime_types | gen_playlist
 )
