@@ -3,12 +3,8 @@ set -o pipefail
 
 cd ~/media/music
 
-fzf_find() {
-    find . ! \( -type f -name 'cover.*' \) ! -path '*/.*' -print0
-}
-
-fzf_list() {
-    find -L "$1" -type f ! -path '*/.*' -print0
+find_music() {
+    find "$@" ! \( -type f -name 'cover.*' \) ! -path '*/.*' -print0
 }
 
 mime_types() {
@@ -75,17 +71,19 @@ elif [[ "$1" == "--interactive" ]]; then
 fi
 
 FZF_FILTER="$(sed 's/--[^ ]*//g;s/-\([^ ]*\)/!\1/g;s/  */ /g;s/^ //;s/ $//;' <<<"$*")"
-SELECTED="$(fzf_find | fzf --read0 --print0 ${FZF_FILTER_OPT} "${FZF_FILTER}" | cut -d '' -f1)"
+SELECTED="$(find_music | fzf --read0 --print0 ${FZF_FILTER_OPT} "${FZF_FILTER}" | cut -d '' -f1)"
 
 if [[ -z "${SELECTED}" ]]; then
     echo "No music matches the query '$*'."
     exit 1
 fi
 
-if [[ "${SELECTED}" == '.' ]]; then
-    SORT=shuf
-fi
-
 exec mpv --idle --loop-playlist $(grep -oz -- '--[^ ]*' <<<"$*" | tr '\0' ' ') --input-file=<(
-    fzf_list "${SELECTED}" | "${SORT}" -z | mime_types | gen_playlist
+    if [[ "${SELECTED}" == '.' ]]; then
+        # we don't tell find to follow symlinks with -L here in order not to
+        # more heavily weight albums with symlinks (by multiple inclusions)
+        find_music | shuf -z | mime_types | gen_playlist
+    else
+        find_music -L "${SELECTED}" | ${SORT} -z | mime_types | gen_playlist
+    fi
 )
