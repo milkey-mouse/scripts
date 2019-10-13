@@ -150,13 +150,13 @@ exec switch_root /mnt /sbin/init
 EOF
 
     OLD_TRAPS="$(trap)"
-    cleanup() {
+    cleanup_init() {
         rm -f "${INIT_LOCATION}"
 
         trap - RETURN
         eval "${OLD_TRAPS}"
     }
-    trap cleanup RETURN
+    trap cleanup_init RETURN
 
     gen_init_cpio - > "$1" <<EOF
 # base layout
