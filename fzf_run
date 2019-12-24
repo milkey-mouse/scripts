@@ -1,7 +1,7 @@
 #!/bin/bash
 
 RUN_HISTORY="$HOME/.cache/fzf_run"
-CMD_PREFIX="swaymsg exec"
+CMD_PREFIX="swaymsg exec --"
 
 mkdir -p "$(dirname "${RUN_HISTORY}")"
 
