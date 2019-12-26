@@ -1,0 +1,13 @@
+#!/bin/bash
+
+FORMAT="-t raw -f S16_LE -c 2 -r 48000"
+FFMPEG_FORMAT="-f s16le -ar 48000 -ac 2"
+
+exec </dev/null
+
+while stdbuf -o0 -e0 arecord -D default:CARD=CODEC ${FORMAT} 3>&1 1>&2 2>&3 3>&- | grep -Fm 1 'No such device'; do :; done 3>&1 1>&2 2>&3 3>&- | \
+if [ -z "$1" ]; then
+    stdbuf -i0 aplay ${FORMAT}
+else
+    tee >(stdbuf -i0 aplay ${FORMAT}) | ffmpeg -hide_banner ${FFMPEG_FORMAT} -i - -compression_level 12 -y "$1"
+fi
