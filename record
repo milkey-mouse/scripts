@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # TODO: better documentation
 help() {
@@ -63,33 +63,66 @@ while :; do
 done
 
 APLAY_FORMAT="-t raw -f ${FORMAT} -c ${CHANNELS} -r ${RATE}"
-MPV_FORMAT="--demuxer-rawaudio-format "$(echo "${FORMAT}" | tr -d _ | tr [:upper:] [:lower:])" --demuxer-rawaudio-channels ${CHANNELS} --demuxer-rawaudio-rate ${RATE}"
-FFMPEG_FORMAT="-f "$(echo "${FORMAT}" | tr -d _ | tr [:upper:] [:lower:])" -ac ${CHANNELS} -ar ${RATE}"
+FORMAT_LOWER="$(echo "${FORMAT}" | tr -d _ | tr [:upper:] [:lower:])"
+MPV_FORMAT="--demuxer-rawaudio-format ${FORMAT_LOWER} --demuxer-rawaudio-channels ${CHANNELS} --demuxer-rawaudio-rate ${RATE}"
+FFMPEG_FORMAT="-f ${FORMAT_LOWER} -ac ${CHANNELS} -ar ${RATE}"
 
 record() {
-    while stdbuf -o0 -e0 arecord -D default:CARD=CODEC ${APLAY_FORMAT} 3>&1 1>&2 2>&3 3>&- | grep -Fm 1 'No such device'; do :; done 3>&1 1>&2 2>&3 3>&-
+    # this wacky FD redirection dance swaps stdout/err & back again so we can grep stderr
+    while stdbuf -o0 -e0 arecord -D default:CARD=CODEC ${APLAY_FORMAT} 3>&1 1>&2 2>&3 3>&- | \
+    grep -Fm 1 'No such device'; do :; done 3>&1 1>&2 2>&3 3>&-
 }
 
 play() {
-    if [ "${PLAYER}" == "mpv" ]; then
-        if [ -x /usr/bin/mpv ]; then
-            # hardcoding this as to not use the singleton-wrapped version
-            MPV=/usr/bin/mpv
-        else
-            MPV=mpv
-        fi
-        stdbuf -i0 -o0 ${MPV} --profile=low-latency --no-cache --no-demuxer-thread --demuxer-readahead-secs=0 --demuxer=rawaudio ${MPV_FORMAT} "$1"
-    elif [ "${PLAYER}" == "aplay" ]; then
-        stdbuf -i0 -o0 aplay ${APLAY_FORMAT} "$1"
-    fi
+    case "${PLAYER}" in
+        mpv)
+            if [ -x /usr/bin/mpv ]; then
+                # hardcoding this as to not use the singleton-wrapped version
+                MPV=/usr/bin/mpv
+            else
+                MPV=mpv
+            fi
+            stdbuf -i0 -o0 ${MPV} --profile=low-latency --no-cache \
+                --no-demuxer-thread --demuxer-readahead-secs=0 \
+                --demuxer=rawaudio ${MPV_FORMAT} "$1"
+            ;;
+        aplay)
+            stdbuf -i0 -o0 aplay ${APLAY_FORMAT} "$1"
+            ;;
+        none)
+            while sleep 3600; do :; done
+            ;;
+    esac
 }
 
-play <(
-    if [ -z "${OUTFILE}" ]; then
-        record
-    else
-        record | stdbuf -i0 -o0 tee >(
-            ffmpeg -hide_banner -loglevel warning ${FFMPEG_FORMAT} -i - -compression_level 12 -y "${OUTFILE}"
-        )
-    fi
-)
+encode() {
+    case "${FFMPEG_FORMAT}" in *.flac)
+        FFMPEG_FORMAT="-compression_level 12 ${FFMPEG_FORMAT}"
+    esac
+    # -guess_layout_max 0 turns off an annoying warning
+    exec ffmpeg -hide_banner -loglevel warning -guess_layout_max 0 ${FFMPEG_FORMAT} -i - -y "${OUTFILE}"
+}
+
+LOOPBACK="$(mktemp -u)"
+mkfifo "${LOOPBACK}"
+trap 'rm "${LOOPBACK}"' EXIT
+
+# ftee provides nonblocking writes to named pipes
+# (even if stdout isn't used, which would seem to be the point of tee)
+record | stdbuf -i0 -o0 ftee "${LOOPBACK}" 2>/dev/null | \
+if [ -z "${OUTFILE}" ]; then
+    exec cat >/dev/null
+else
+    encode
+fi &
+RECORDER=$!
+
+trap 'SIGINT=1' SIGINT
+play "${LOOPBACK}"
+
+# if mpv quit without a SIGINT, we need to send one to the recording process
+if [ -z "${SIGINT}" ]; then
+    kill -s INT ${RECORDER}
+fi
+
+wait
