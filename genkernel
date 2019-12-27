@@ -43,7 +43,7 @@ setup_config() {
         if LANG="C" LC_ALL="C" make olddefconfig | stderr_tee | grep -q '^# No change to'; then
             echo "Nothing new in this config."
         else
-            NEW_CONFIG_VARS="$(diff <(gzip -cd /proc/config.gz | strip_config_vars) <(strip_config_vars .config) | sed -n 's/^> \(.*\)$/\1/p' || true)"
+            NEW_CONFIG_VARS="$(diff <(gzip -cd /proc/config.gz | strip_config_vars) <(strip_config_vars .config) | sed -n 's/^> \(.*\)$/\1/p' || :)"
 
             if [ -z "${NEW_CONFIG_VARS}" ]; then
                 echo "Nothing new in this config."

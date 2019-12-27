@@ -12,7 +12,7 @@ if [ "$(basename "$0")" != "singleton" ]; then
   # find best version of this program in $PATH which isn't this one
   PROGRAM="$(which -a "$(basename "$0")" | grep -Fvx "$(realpath -s "$0")" | head -n1)"
 else
-  while true; do
+  while :; do
       case $1 in
       "--toggle")
           TOGGLE=1
@@ -27,11 +27,11 @@ else
       shift
   done
   PROGRAM="$1"
-  shift
+  shift 2>/dev/null
 fi
 
 if [ -z "${PROGRAM}" ]; then
-  PROGRAM=true
+  PROGRAM=:
 fi
 
 PIDFILE="/tmp/$(basename "${PROGRAM}")-singleton-${UID}.pid"

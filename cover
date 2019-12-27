@@ -72,7 +72,7 @@ exec mvi --really-quiet --force-window --idle=yes --no-input-terminal --input-fi
           COVERS="$(
             find -L "${PLAYDIR}" -type f -name 'cover*' -exec \
               file --dereference --mime-type --no-pad {} \; | \
-            grep -Po '^.*(?=: image/[0-9a-z-]*$)' || true
+            grep -Po '^.*(?=: image/[0-9a-z-]*$)' || :
           )"
           if [ -z "${COVERS}"  ]; then
             clear-playlist
