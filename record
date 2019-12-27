@@ -1,13 +1,95 @@
 #!/bin/bash
 
-FORMAT="-t raw -f S16_LE -c 2 -r 48000"
-FFMPEG_FORMAT="-f s16le -ar 48000 -ac 2"
+# TODO: better documentation
+help() {
+    echo "record: record [--help] [--format FORMAT] [--channels CHANNELS] [--rate RATE]" >&2
+    echo "               [--mpv] [--aplay] [--quiet] [OUTFILE]" >&2
+}
 
-exec </dev/null
+# TODO: error handling
+FORMAT=S16_LE
+CHANNELS=2
+RATE=48000
+PLAYER=none
 
-while stdbuf -o0 -e0 arecord -D default:CARD=CODEC ${FORMAT} 3>&1 1>&2 2>&3 3>&- | grep -Fm 1 'No such device'; do :; done 3>&1 1>&2 2>&3 3>&- | \
-if [ -z "$1" ]; then
-    stdbuf -i0 aplay ${FORMAT}
-else
-    tee >(stdbuf -i0 aplay ${FORMAT}) | ffmpeg -hide_banner ${FFMPEG_FORMAT} -i - -compression_level 12 -y "$1"
+if command -v mpv >/dev/null; then
+    # mpv is slightly better because of the ability to pause
+    PLAYER=mpv
+elif command -v aplay >/dev/null; then
+    # aplay should be available if arecord is
+    PLAYER=aplay
 fi
+
+while :; do
+    case $1 in
+    -f|--format)
+        shift
+        FORMAT=$1
+        ;;
+    -c|--channels)
+        shift
+        CHANNELS=$1
+        ;;
+    -r|--rate)
+        shift
+        RATE=$1
+        ;;
+    --mpv)
+        PLAYER=mpv
+        ;;
+    --aplay)
+        PLAYER=aplay
+        ;;
+    --quiet)
+        PLAYER=none
+        ;;
+    "")
+        break
+        ;;
+    -h|--help)
+        help
+        exit 0
+        ;;
+    *)
+        if [ -z "${OUTFILE}" ]; then
+            OUTFILE=$1
+        else
+            help
+            exit 1
+        fi
+        ;;
+    esac
+    shift
+done
+
+APLAY_FORMAT="-t raw -f ${FORMAT} -c ${CHANNELS} -r ${RATE}"
+MPV_FORMAT="--demuxer-rawaudio-format "$(echo "${FORMAT}" | tr -d _ | tr [:upper:] [:lower:])" --demuxer-rawaudio-channels ${CHANNELS} --demuxer-rawaudio-rate ${RATE}"
+FFMPEG_FORMAT="-f "$(echo "${FORMAT}" | tr -d _ | tr [:upper:] [:lower:])" -ac ${CHANNELS} -ar ${RATE}"
+
+record() {
+    while stdbuf -o0 -e0 arecord -D default:CARD=CODEC ${APLAY_FORMAT} 3>&1 1>&2 2>&3 3>&- | grep -Fm 1 'No such device'; do :; done 3>&1 1>&2 2>&3 3>&-
+}
+
+play() {
+    if [ "${PLAYER}" == "mpv" ]; then
+        if [ -x /usr/bin/mpv ]; then
+            # hardcoding this as to not use the singleton-wrapped version
+            MPV=/usr/bin/mpv
+        else
+            MPV=mpv
+        fi
+        stdbuf -i0 -o0 ${MPV} --profile=low-latency --no-cache --no-demuxer-thread --demuxer-readahead-secs=0 --demuxer=rawaudio ${MPV_FORMAT} "$1"
+    elif [ "${PLAYER}" == "aplay" ]; then
+        stdbuf -i0 -o0 aplay ${APLAY_FORMAT} "$1"
+    fi
+}
+
+play <(
+    if [ -z "${OUTFILE}" ]; then
+        record
+    else
+        record | stdbuf -i0 -o0 tee >(
+            ffmpeg -hide_banner -loglevel warning ${FFMPEG_FORMAT} -i - -compression_level 12 -y "${OUTFILE}"
+        )
+    fi
+)
