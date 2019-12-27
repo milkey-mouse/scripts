@@ -2,8 +2,8 @@
 
 # TODO: better documentation
 help() {
-    echo "record: record [--help] [--format FORMAT] [--channels CHANNELS] [--rate RATE]" >&2
-    echo "               [--mpv] [--aplay] [--quiet] [OUTFILE]" >&2
+    echo "needledrop: needledrop [--format FORMAT] [--channels CHANNELS] [--rate RATE]" >&2
+    echo "                       [--mpv] [--aplay] [--quiet] [--help] [OUTFILE]" >&2
 }
 
 # TODO: error handling
