@@ -70,7 +70,7 @@ exec mvi --really-quiet --force-window --idle=yes --no-input-terminal --input-fi
         if [ "${PLAYDIR}" != "${LASTDIR}" ]; then
           LASTDIR="${PLAYDIR}"
           COVERS="$(
-            find -L "${PLAYDIR}" -type f -name 'cover*' -exec \
+            find -L "${PLAYDIR}" -type f -name '*cover*' -exec \
               file --dereference --mime-type --no-pad {} \; | \
             grep -Po '^.*(?=: image/[0-9a-z-]*$)' | \
             awk '{ print length($0) " " $0; }' | sort -ns | cut -d' ' -f2- || :
