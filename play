@@ -1,5 +1,5 @@
 #!/bin/bash
-set -o pipefail
+set -euo pipefail
 
 cd ~/media/music
 
@@ -73,7 +73,9 @@ wait_for_file() {
 
 SORT=sort
 FZF_FILTER_OPT="--filter"
-if [[ "$1" == "--shuffle" ]]; then
+if [[ "$#" == 0 ]]; then
+    :
+elif [[ "$1" == "--shuffle" ]]; then
     SORT=shuf
     shift
 elif [[ "$1" == "--interactive" ]]; then
