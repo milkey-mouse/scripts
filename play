@@ -48,7 +48,6 @@ mime_types() {
         rm "${TMPDIR}/${collecting}"
         : $((collecting++))
     done
-    rm -rf "${TMPDIR}"
 }
 
 gen_playlist() {
@@ -92,7 +91,6 @@ if [[ -z "${SELECTED}" ]]; then
 fi
 
 # start assembling the playlist as soon as we know its parameters
-# TODO: kill this background process if we're interrupted before it's done
 PLAYLIST="$(mktemp -u)"
 mkfifo "${PLAYLIST}"
 if [[ "${SELECTED}" == '.' ]]; then
@@ -125,19 +123,20 @@ mkfifo "${LOGFILE}"
         esac
     done < <(stdbuf -i0 -o0 cut -c14- <"${LOGFILE}")
     cat <"${LOGFILE}" >/dev/null &
+    trap "kill $!" EXIT
     rm "${LOGFILE}" &
 
     if [[ "${IPC_SERVER_PATH}" == "/dev/null" ]]; then
-            # if we're here it means IPC socket hasn't opened, so we kill mpv
-            # so we can start another with an IPC socket. obviously we can't
-            # do this with an IPC command, so find mpv and send it SIGINT
-            pkill -SIGINT -P $$ mpv
+        # if we're here it means an IPC socket hasn't opened, so we kill mpv so
+        # we can start another with an IPC socket. obviously we can't do this
+        # with an IPC command, so find mpv and send it SIGINT
+        pkill -SIGINT -P $$ mpv
         exit
     fi
 
     exec <"${PLAYLIST}"
     rm "${PLAYLIST}" &
-    exec stdbuf -i0 -o0 nc -U "${IPC_SERVER_PATH}" >/dev/null 2>&1
+    stdbuf -i0 -o0 nc -U "${IPC_SERVER_PATH}" >/dev/null 2>&1
 ) &
 
 mpv --idle --loop-playlist $(grep -oz -- '--[^ ]*' <<<"$*" | tr '\0' ' ') \
@@ -149,11 +148,13 @@ if [[ $? == 4 ]] && [[ -e "${PLAYLIST}" ]]; then
     IPC_SERVER_PATH="$(mktemp -u)"
     (
         wait_for_file "${IPC_SERVER_PATH}"
+        trap 'rm "${PLAYLIST}" "${IPC_SERVER_PATH}"' EXIT
         exec <"${PLAYLIST}"
         rm "${PLAYLIST}" &
         stdbuf -i0 -o0 nc -U "${IPC_SERVER_PATH}" >/dev/null
-        rm "${IPC_SERVER_PATH}"
     ) &
     mpv --idle --loop-playlist $(grep -oz -- '--[^ ]*' <<<"$*" | tr '\0' ' ') \
         --input-ipc-server="${IPC_SERVER_PATH}"
 fi
+
+kill -SIGINT $$
