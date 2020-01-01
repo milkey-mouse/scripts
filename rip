@@ -13,7 +13,7 @@ eject
 
 if pgrep -u "${USER}" picard; then
     # picard is open already, let the user add the directory
-    echo "CD ripped at ${TMPDIR}"
+    printf "CD ripped at %s\n" "${TMPDIR}"
 else
     # move somewhere else in case picard wants to delete the empty tmpdir
     cd ~

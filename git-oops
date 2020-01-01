@@ -2,8 +2,8 @@
 # git-oops: amend HEAD with the changes in the working directory
 
 if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
-  echo "git-oops: amend HEAD with the changes in the working directory"
-  echo "Be careful! This script force-modifies, and in some cases force-pushes, commits."
+  printf "git-oops: amend HEAD with the changes in the working directory\n"
+  printf "Be careful! This script force-modifies, and in some cases force-pushes, commits.\n"
   exit 0
 fi
 
@@ -14,7 +14,7 @@ LOCAL_COMMITS="$(git log --branches --not --remotes --oneline | wc -l)"
 git add -A && git commit --amend --no-edit
 
 if [ "${LOCAL_COMMITS}" != "0" ]; then
-  echo "Not force-pushing as the original commit wasn't pushed."
+  printf "Not force-pushing as the original commit wasn't pushed.\n"
 else
   git push --force
 fi

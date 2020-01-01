@@ -11,7 +11,7 @@ else
 fi
 
 sleep_for_interval() {
-  TIME="$(echo "$1" | sed 's/\([0-9]\)$/\1m/')"
+  TIME="$(printf "%s" "$1" | sed 's/\([0-9]\)$/\1m/')"
   sleep "${TIME}" 2>/dev/null
 }
 
@@ -21,7 +21,7 @@ sleep_to_date() {
   if (( ${TARGET_TIME} < ${CURRENT_TIME} )); then
     # don't set a timer in the past!
     # the cause is likely a 12-hour format being parsed as 24.
-    if echo "$1" | grep -vq 'PM$'; then
+    if printf "%s" "$1" | grep -vq 'PM$'; then
       TARGET_TIME="$(date -d "$1 PM" +%s 2>/dev/null)"
     fi
   fi

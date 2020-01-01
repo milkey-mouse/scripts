@@ -14,7 +14,7 @@ strip_config_vars() {
 }
 
 clean_src() {
-    echo "Cleaning source directory"
+    printf "Cleaning source directory\n"
     if [ -e .config ] && [ "${MRPROPER}" -ne "1" ]; then
         make clean
     else
@@ -31,24 +31,24 @@ stderr_tee() {
 
 setup_config() {
     if [ -f .config ]; then
-        echo ".config exists, we won't touch it"
+        printf ".config exists, we won't touch it\n"
     elif [ -e .config ]; then
-        echo "wat: .config exists, but is not a regular file"
+        printf "wat: .config exists, but is not a regular file\n"
         exit 1
     else
-        echo "Copying config from running kernel"
+        printf "Copying config from running kernel\n"
         gzip -cd /proc/config.gz > .config
 
-        echo "Running make olddefconfig"
+        printf "Running make olddefconfig\n"
         if LANG="C" LC_ALL="C" make olddefconfig | stderr_tee | grep -q '^# No change to'; then
-            echo "Nothing new in this config."
+            printf "Nothing new in this config.\n"
         else
             NEW_CONFIG_VARS="$(diff <(gzip -cd /proc/config.gz | strip_config_vars) <(strip_config_vars .config) | sed -n 's/^> \(.*\)$/\1/p' || :)"
 
             if [ -z "${NEW_CONFIG_VARS}" ]; then
-                echo "Nothing new in this config."
+                printf "Nothing new in this config.\n"
             else
-                echo "New config parameters were set to their defaults:"
+                printf "New config parameters were set to their defaults:\n"
                 GREP_COLOR="01;32" grep -F --color=always "${NEW_CONFIG_VARS}" .config | grep -E --color=always 'y?$'
             fi
         fi
@@ -56,7 +56,7 @@ setup_config() {
 }
 
 set_initramfs_location() {
-    echo "Fixing CONFIG_INITRAMFS_SOURCE"
+    printf "Fixing CONFIG_INITRAMFS_SOURCE\n"
     sed -i 's#^CONFIG_INITRAMFS_SOURCE=.*$#CONFIG_INITRAMFS_SOURCE="'"$1"'"#' .config
 }
 
@@ -70,7 +70,7 @@ gen_init_cpio() {
 }
 
 build_initramfs() {
-    echo "Building initramfs"
+    printf "Building initramfs\n"
 
     INIT_LOCATION="$(mktemp)"
 
@@ -78,7 +78,7 @@ build_initramfs() {
 #!/bin/sh
 
 panic() {
-    echo "The kernel will panic as soon as you press Enter."
+    printf "The kernel will panic as soon as you press Enter.\n"
     read
 }
 trap panic EXIT
@@ -96,7 +96,7 @@ cmdline() {
     value=" $(cat /proc/cmdline) "
     value="${value##* ${1}=}"
     value="${value%% *}"
-    [ "${value}" != "" ] && echo "${value}"
+    [ "${value}" != "" ] && printf "%s\n" "${value}"
 }
 
 export PATH=/bin
@@ -106,8 +106,8 @@ alias mount="mount -n"
 #CRYPT_ROOT="$(sed -n 's/^.*crypt_root=\([^ $]*\).*$/\1/p' /proc/cmdline)"
 CRYPT_ROOT="$(cmdline crypt_root)"
 if [ "$?" -ne "0" ] || [ -z "${CRYPT_ROOT}" ]; then
-    echo "crypt_root was not specified on the command line."
-    echo -n "Contents of /proc/cmdline: "; cat /proc/cmdline
+    printf "crypt_root was not specified on the command line.\n"
+    printf "Contents of /proc/cmdline: "; cat /proc/cmdline
     exit 1
 fi
 
@@ -116,28 +116,28 @@ for _ in $(seq 20); do
         break
     fi
 
-    echo "Waiting for ${CRYPT_ROOT} to show up in /dev..."
+    printf "Waiting for ${CRYPT_ROOT} to show up in /dev...\n"
     sleep 1
 done
 
 CRYPT_ROOT_PATH="$(findfs ${CRYPT_ROOT})"
 if [ "$?" -ne "0" ] || [ -z "${CRYPT_ROOT_PATH}" ]; then
-    echo "${CRYPT_ROOT} does not exist."
+    printf "${CRYPT_ROOT} does not exist.\n"
     exit 1
 fi
 
 if ! cryptsetup isLuks "${CRYPT_ROOT_PATH}"; then
-    echo "${CRYPT_ROOT_PATH} was not identified as a LUKS device."
+    printf "${CRYPT_ROOT_PATH} was not identified as a LUKS device.\n"
     exit 1
 fi
 
 while ! cryptsetup luksOpen "${CRYPT_ROOT_PATH}" root; do
-    echo "Could not open ${CRYPT_ROOT_PATH}. Trying again..."
+    printf "Could not open ${CRYPT_ROOT_PATH}. Trying again...\n"
 done
-echo "Opened ${CRYPT_ROOT_PATH} as /dev/mapper/root."
+printf "Opened ${CRYPT_ROOT_PATH} as /dev/mapper/root.\n"
 
 if ! mount /dev/mapper/root /mnt; then
-    echo "Could not mount /dev/mapper/root."
+    printf "Could not mount /dev/mapper/root.\n"
     exit 1
 fi
 
@@ -145,7 +145,7 @@ umount /sys
 umount /proc
 #umount /dev
 
-echo "Switching to new root..."
+printf "Switching to new root...\n"
 exec switch_root /mnt /sbin/init
 EOF
 
@@ -177,12 +177,12 @@ EOF
 }
 
 build_kernel() {
-    echo "Building kernel"
+    printf "Building kernel\n"
     make bzImage
 }
 
 usage() {
-    echo "usage: genkernel [--help] [--noinstall] [--mrproper] [--menuconfig]"
+    printf "usage: genkernel [--help] [--noinstall] [--mrproper] [--menuconfig]\n"
 }
 
 MENUCONFIG=0
@@ -217,7 +217,7 @@ done
 set -u
 
 if [ ! -z "${NICENESS}" ]; then
-    echo "Setting niceness to ${NICENESS}"
+    printf "Setting niceness to %s\n" "${NICENESS}"
     renice "${NICENESS}" $$ > /dev/null
 fi
 
@@ -241,7 +241,7 @@ set_initramfs_location "${INITRAMFS_LOCATION}"
 build_kernel "${INITRAMFS_LOCATION}"
 
 if [ "${INSTALL}" -eq "1" ]; then
-    echo "Kernel built successfully. Signing and installing."
+    printf "Kernel built successfully. Signing and installing.\n"
 
     sbsign --key /etc/efikeys/db.key --cert /etc/efikeys/db.crt --output /boot/EFI/gentoo/newkernel.efi arch/x86/boot/bzImage
 
@@ -249,5 +249,5 @@ if [ "${INSTALL}" -eq "1" ]; then
     mv -v kernel.efi prevkernel.efi
     mv -v newkernel.efi kernel.efi
 else
-    echo "Kernel built successfully."
+    printf "Kernel built successfully.\n"
 fi

@@ -1,17 +1,17 @@
 #!/bin/bash
 # cover: show album covers for currently playing music
-# create alias for stdout for subshell
 set -euo pipefail
 
 # try to move to mpv's working directory in case media paths are based on it
 
 TMPFILE="$(mktemp -ut mpv-pid.XXXXX)"
 mkfifo "${TMPFILE}"
-jq -cn '{"command":["run", "bash", "-c", "echo $PPID > " + $ARGS.positional[0]]}' --args "${TMPFILE}" | \
+jq -cn '{"command":["run", "bash", "-c", "printf '%s' $PPID > " + $ARGS.positional[0]]}' --args "${TMPFILE}" | \
 nc -Uw 1 ~/.config/mpv/socket | head -n1 >/dev/null
 MPV_PID="$(cat "${TMPFILE}")"
 rm -f "${TMPFILE}"
 
+# create alias for stdout for subshell
 exec 3>&1
 exec mvi --really-quiet --force-window --idle=yes --no-input-terminal --input-file=<(
   set -eu
@@ -52,7 +52,7 @@ exec mvi --really-quiet --force-window --idle=yes --no-input-terminal --input-fi
         # for each line in the old metadata, clear one & move cursor up
         (yes $'\033[2K\033[1A' || :) | head -n "${LINES}" | tr -d '\n'
         # reset cursor position to beginning of line
-        echo -n $'\033[2K\r'
+        printf '\033[2K\r'
       ) >&3
     fi
 
@@ -60,11 +60,11 @@ exec mvi --really-quiet --force-window --idle=yes --no-input-terminal --input-fi
       clear-playlist
     else
       # remember how many lines we print so we can clear them later
-      LINES="$(echo "${METADATA}" | tee /dev/fd/3 | wc -l)"
+      LINES="$(printf "%s" "${METADATA}" | tee /dev/fd/3 | wc -l)"
 
       # TODO: this logic fails with newlines in filenames
       # we can't just use -0 and -Z everywhere because bash vars can't hold nulls
-      PLAYPATH="$(echo "${METADATA}" | grep '^Path:' | cut -d' ' -f2-)"
+      PLAYPATH="$(printf "%s" "${METADATA}" | grep '^Path:' | cut -d' ' -f2-)"
       if [ -e "${PLAYPATH}" ]; then
         PLAYDIR="$(realpath "$(dirname "${PLAYPATH}")")"
         if [ "${PLAYDIR}" != "${LASTDIR}" ]; then

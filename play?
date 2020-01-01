@@ -14,11 +14,11 @@ if [ ! -z "${MPV_PID}" ]; then
   cd /proc/${MPV_PID}/cwd
 fi
 
-MEDIA_PATH="$(echo '{ "command": ["get_property", "path"] }' | nc -Uw 1 ~/.config/mpv/socket | head -n1 | jq -r '.data')"
+MEDIA_PATH="$(printf '{ "command": ["get_property", "path"] }\n' | nc -Uw 1 ~/.config/mpv/socket | head -n1 | jq -r '.data')"
 if [ -e "${MEDIA_PATH}" ]; then
   MEDIA_PATH="$(realpath -s "${MEDIA_PATH}")"
 fi
-echo "Path: ${MEDIA_PATH}"
+printf "Path: %s\n" "${MEDIA_PATH}"
 
-echo '{ "command": ["get_property", "filtered-metadata"] }' | nc -Uw 1 ~/.config/mpv/socket | \
+printf '{ "command": ["get_property", "filtered-metadata"] }\n' | nc -Uw 1 ~/.config/mpv/socket | \
 head -n1 | jq -r '.data | keys_unsorted[] as $k | "\($k): \(.[$k])"'

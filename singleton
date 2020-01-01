@@ -49,7 +49,7 @@ while [ -e "${PIDFILE}" ]; do
 done
 
 "${PROGRAM}" "$@" &
-echo $! > "${PIDFILE}"
+printf "%s" "$!" > "${PIDFILE}"
 
 function cleanup {
     rm -f "${PIDFILE}"

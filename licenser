@@ -11,7 +11,7 @@ NAME="${NAME-$(
   # (grep is used so an empty string fails/falls back)
   getent passwd `whoami` | cut -d : -f 5 | grep '.' || \
   # fall back to just username
-  echo $USER
+  printf "%s\n" "${USER}"
 )}" 2>/dev/null
 
 LICENSE_DIR="${LICENSE_DIR:-$HOME/.cache/licenser}"
@@ -39,7 +39,7 @@ get_license() {
 }
 
 usage() {
-  echo "Usage: $(basename $0) LICENSE [FILE]"
+  printf "Usage: %s LICENSE [FILE]" "$(basename $0)"
   cut -b5- >&2 <<'EOF'
     Add a LICENSE file to the current directory.
 
@@ -61,15 +61,15 @@ EOF
 
 # ask_yn [error] [prompt] [default]
 ask_yn() {
-  echo -n "$1"
-  [ ! -t 0 ] && echo -ne '\n' && return ${3:-1}
-  echo -n " $2 (Y/N): " >&2
+  printf "%s" "$1"
+  [ ! -t 0 ] && printf "\n" && return ${3:-1}
+  printf " %s (Y/N): " "$2" >&2
   while :; do
     read answer
     case "${answer}" in
       [Yy]* ) return 0;;
       [Nn]* ) return 1;;
-      * ) echo -n "Please answer Y or N: " >&2;;
+      * ) printf "Please answer Y or N: " >&2;;
     esac
   done
 }
@@ -77,13 +77,13 @@ ask_yn() {
 if [ $# == 0 ]; then
   usage
   exit 1
-elif echo "$*" | grep -Fwq -- $'-h\n--help'; then
+elif printf "%s" "$*" | grep -Fwq -- $'-h\n--help'; then
   # -h or --help has been specified
   usage
   exit 0
 fi
 
-SPDX="$(echo "$1" | tr [:upper:] [:lower:])"
+SPDX="$(printf "%s" "$1" | tr [:upper:] [:lower:])"
 
 FILENAME="${2:-LICENSE}"
 if [ "${FILENAME}" == "-" ]; then
@@ -95,13 +95,13 @@ fi
 (
   if ! get_license "${SPDX}.txt" 2>/dev/null; then
     MATCHING="$((list_licenses || list_cached_licenses) 2>/dev/null | grep "^${SPDX}")"
-    if [ "$(echo "${MATCHING}" | wc -l)" == "1" ]; then
+    if [ "$(printf "%s" "${MATCHING}" | wc -l)" == "1" ]; then
       get_license "${MATCHING}"
     else
       (
-        echo "There are multiple licenses matching '$1':"
-        echo "${MATCHING}" | sed 's/.txt$//;s/^/  /'
-        echo "Try again with one of the listed licenses."
+        printf "There are multiple licenses matching '$1':\n"
+        printf "%s\n" "${MATCHING}" | sed 's/.txt$//;s/^/  /'
+        printf "Try again with one of the listed licenses.\n"
       ) >&2
       exit 1
     fi

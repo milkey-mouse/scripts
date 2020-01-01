@@ -2,8 +2,8 @@
 
 # TODO: better documentation
 help() {
-    echo "needledrop: needledrop [--format FORMAT] [--channels CHANNELS] [--rate RATE]" >&2
-    echo "                       [--mpv] [--aplay] [--quiet] [--help] [OUTFILE]" >&2
+    printf "needledrop: needledrop [--format FORMAT] [--channels CHANNELS] [--rate RATE]\n" >&2
+    printf "                       [--mpv] [--aplay] [--quiet] [--help] [OUTFILE]\n" >&2
 }
 
 # TODO: error handling
@@ -63,7 +63,7 @@ while :; do
 done
 
 APLAY_FORMAT="-t raw -f ${FORMAT} -c ${CHANNELS} -r ${RATE}"
-FORMAT_LOWER="$(echo "${FORMAT}" | tr -d _ | tr [:upper:] [:lower:])"
+FORMAT_LOWER="$(printf "%s" "${FORMAT}" | tr -d _ | tr [:upper:] [:lower:])"
 MPV_FORMAT="--demuxer-rawaudio-format ${FORMAT_LOWER} --demuxer-rawaudio-channels ${CHANNELS} --demuxer-rawaudio-rate ${RATE}"
 FFMPEG_FORMAT="-f ${FORMAT_LOWER} -ac ${CHANNELS} -ar ${RATE}"
 

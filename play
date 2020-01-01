@@ -83,10 +83,10 @@ elif [[ "$1" == "--interactive" ]]; then
 fi
 
 FZF_FILTER="$(sed 's/--[^ ]*//g;s/-\([^ ]*\)/!\1/g;s/  */ /g;s/^ //;s/ $//;' <<<"$*")"
-SELECTED="$(find_music | fzf --read0 --print0 ${FZF_FILTER_OPT} "${FZF_FILTER}" | cut -d '' -f1)"
+SELECTED="$(find_music | fzf --read0 --print0 ${FZF_FILTER_OPT} "${FZF_FILTER}" | cut -d '' -f1 || :)"
 
 if [[ -z "${SELECTED}" ]]; then
-    echo "No music matches the query '$*'."
+    printf "No music matches the query '%s'.\n" "$*" >&2
     exit 1
 fi
 

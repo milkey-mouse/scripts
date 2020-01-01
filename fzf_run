@@ -7,7 +7,7 @@ mkdir -p "$(dirname "${RUN_HISTORY}")"
 
 HISTORY="$(cut -d' ' -f2- "${RUN_HISTORY}")"
 CMD="$(
-    (echo "${HISTORY}" && comm -23 <(compgen -c | sort -u) <(echo "${HISTORY}" | sort)) |
+    (printf "%s" "${HISTORY}\n" && comm -23 <(compgen -c | sort -u) <(printf "%s" "${HISTORY}\n" | sort)) |
     fzf --tiebreak=index --layout=reverse --color=16 --print-query "$@" | tail -n1
 )"
 
@@ -42,4 +42,4 @@ EOF
 awk "${AWK_INCREMENT_ROW}" "$(cut -d' ' -f1 <<<"${CMD}")" "${RUN_HISTORY}" | sort -nr > "${RUN_HISTORY}.tmp"
 mv "${RUN_HISTORY}.tmp" "${RUN_HISTORY}"
 
-echo -e "\033]2;fzf_run\007"
+printf "\033]2;fzf_run\007"
