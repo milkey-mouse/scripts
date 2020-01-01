@@ -16,7 +16,8 @@ int main(int argc, char* argv[])
     int readfd, writefd;
     struct stat status;
     char* fifonam;
-    char buffer[BUFSIZ];
+    //char buffer[BUFSIZ];
+    char buffer[1];
     ssize_t bytes;
 
     signal(SIGPIPE, SIG_IGN);
