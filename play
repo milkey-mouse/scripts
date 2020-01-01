@@ -18,6 +18,7 @@ mime_types() {
     collecting=1
     NPROC="$(nproc || echo 4)"
     TMPDIR="$(mktemp -d)"
+    trap 'rm -rf "${TMPDIR}"' EXIT
     while :; do
         readarray -d '' -n32 files
         if [[ "${#files[@]}" == 0 ]]; then
@@ -57,7 +58,17 @@ gen_playlist() {
             # TODO: jq needs a null-delimited lines option, for now we are using normal newlines
             printf "%s\n" "${FPATH}"
         fi
-    done | jq -cR '{ "command": ["loadfile", ., "append-play"] }'
+    done | jq --unbuffered -cR '{ "command": ["loadfile", ., "append-play"] }'
+}
+
+wait_for_file() {
+    if command -v inotifywait >/dev/null; then
+        BNAME="$(basename -z "$1" | tr -d '\0')"
+        while IFS= read -r FILE && [[ "${FILE}" != "${BNAME}" ]]; do :; done < \
+        <(cd "$(dirname -z "$1" | tr -d '\0')"; ls .; stdbuf -o0 inotifywait -qme create --format '%f' --monitor .)
+    else
+        while [[ ! -e "$1" ]]; do :; done
+    fi
 }
 
 SORT=sort
@@ -78,12 +89,69 @@ if [[ -z "${SELECTED}" ]]; then
     exit 1
 fi
 
-exec mpv --idle --loop-playlist $(grep -oz -- '--[^ ]*' <<<"$*" | tr '\0' ' ') --input-file=<(
-    if [[ "${SELECTED}" == '.' ]]; then
-        # we don't tell find to follow symlinks with -L here in order not to
-        # more heavily weight albums with symlinks (by multiple inclusions)
-        find_music | shuf -z | mime_types | gen_playlist
-    else
-        find_music -L "${SELECTED}" | ${SORT} -z | mime_types | gen_playlist
+# start assembling the playlist as soon as we know its parameters
+# TODO: kill this background process if we're interrupted before it's done
+PLAYLIST="$(mktemp -u)"
+mkfifo "${PLAYLIST}"
+if [[ "${SELECTED}" == '.' ]]; then
+    # we don't tell find to follow symlinks with -L here in order not to
+    # more heavily weight albums with symlinks (by multiple inclusions)
+    find_music | shuf -z
+else
+    find_music -L "${SELECTED}" | ${SORT} -z
+fi | mime_types | gen_playlist > "${PLAYLIST}" &
+
+# we really want this to be fast (inb4 then why is it written in sh‽), so even
+# though we could easily open a dummy mpv pointed at /dev/null to read its log
+# output (and therefore the location of its IPC socket), let's try to find its
+# existing one by parsing its logs in realtime
+LOGFILE="$(mktemp -u)"
+mkfifo "${LOGFILE}"
+(
+    IPC_SERVER_PATH="/dev/null"
+    while IFS=$'\n' read -r LINE; do
+        case "${LINE}" in
+        "[cplayer] Setting option 'input-ipc-server' = '"*)
+            IPC_SERVER_PATH="$(sed "s/^\[cplayer\] Setting option 'input-ipc-server' = '\(.*\)'\( (flags = [0-9]*)\)\{0,1\}$/\1/" <<<"${LINE}")"
+            ;;
+        "[global] user path: '${IPC_SERVER_PATH}' -> '"*)
+            IPC_SERVER_PATH="$(sed "s/^\[global\] user path: '[^']*' -> '\(.*\)'$/\1/" <<<"${LINE}")"
+            ;;
+        '[ipc] Listening to IPC socket.'|'[cplayer] Done loading scripts.')
+            break
+            ;;
+        esac
+    done < <(stdbuf -i0 -o0 cut -c14- <"${LOGFILE}")
+    cat <"${LOGFILE}" >/dev/null &
+    rm "${LOGFILE}" &
+
+    if [[ "${IPC_SERVER_PATH}" == "/dev/null" ]]; then
+            # if we're here it means IPC socket hasn't opened, so we kill mpv
+            # so we can start another with an IPC socket. obviously we can't
+            # do this with an IPC command, so find mpv and send it SIGINT
+            pkill -SIGINT -P $$ mpv
+        exit
     fi
-)
+
+    exec <"${PLAYLIST}"
+    rm "${PLAYLIST}" &
+    exec stdbuf -i0 -o0 nc -U "${IPC_SERVER_PATH}" >/dev/null 2>&1
+) &
+
+mpv --idle --loop-playlist $(grep -oz -- '--[^ ]*' <<<"$*" | tr '\0' ' ') \
+    --log-file="${LOGFILE}"
+
+# exit code 4 means mpv was stopped by SIGINT (or a quit keybind)
+# if $PLAYLIST still exists, we never connected to the IPC socket
+if [[ $? == 4 ]] && [[ -e "${PLAYLIST}" ]]; then
+    IPC_SERVER_PATH="$(mktemp -u)"
+    (
+        wait_for_file "${IPC_SERVER_PATH}"
+        exec <"${PLAYLIST}"
+        rm "${PLAYLIST}" &
+        stdbuf -i0 -o0 nc -U "${IPC_SERVER_PATH}" >/dev/null
+        rm "${IPC_SERVER_PATH}"
+    ) &
+    mpv --idle --loop-playlist $(grep -oz -- '--[^ ]*' <<<"$*" | tr '\0' ' ') \
+        --input-ipc-server="${IPC_SERVER_PATH}"
+fi
