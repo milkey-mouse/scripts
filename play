@@ -42,7 +42,7 @@ mime_types() {
     done
     while (( ${collecting} < ${spawned} )); do
         # if the job no longer exists that just means it's completed
-        eval wait "%${collecting}" 2>/dev/null
+        eval wait "%${collecting}" 2>/dev/null || :
         #echo "collecting ${collecting}" >&2
         cat "${TMPDIR}/${collecting}"
         rm "${TMPDIR}/${collecting}"
