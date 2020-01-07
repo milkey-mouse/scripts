@@ -60,7 +60,7 @@ exec mvi --really-quiet --force-window --idle=yes --no-input-terminal --input-fi
       clear-playlist
     else
       # remember how many lines we print so we can clear them later
-      LINES="$(printf "%s" "${METADATA}" | tee /dev/fd/3 | wc -l)"
+      LINES="$(printf "%s\n" "${METADATA}" | tee /dev/fd/3 | wc -l)"
 
       # TODO: this logic fails with newlines in filenames
       # we can't just use -0 and -Z everywhere because bash vars can't hold nulls
