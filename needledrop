@@ -10,6 +10,7 @@ help() {
 FORMAT=S16_LE
 CHANNELS=2
 RATE=48000
+FRAMESIZE=4
 PLAYER=none
 
 if command -v mpv >/dev/null; then
@@ -109,7 +110,7 @@ trap 'rm "${LOOPBACK}"' EXIT
 
 # ftee provides nonblocking writes to named pipes
 # (even if stdout isn't used, which would seem to be the point of tee)
-record | stdbuf -i0 -o0 ftee "${LOOPBACK}" 2>/dev/null | \
+record | stdbuf -i0 -o0 ftee "${LOOPBACK}" "${FRAMESIZE}" 2>/dev/null | \
 if [ -z "${OUTFILE}" ]; then
     exec cat >/dev/null
 else

@@ -17,35 +17,54 @@ int main(int argc, char* argv[])
     struct stat status;
     char* fifonam;
     //char buffer[BUFSIZ];
-    char buffer[1];
+    char *buffer;
+    ssize_t bufsiz;
     ssize_t bytes;
 
     signal(SIGPIPE, SIG_IGN);
 
-    if (2 != argc) {
+    if (argc < 2 || argc > 3) {
         printf(
-            "Usage:\n someprog 2>&1 | %s FIFO\n FIFO - path to a"
-            " named pipe, required argument\n",
+            "Usage:\n someprog 2>&1 | %s FIFO [BUFSIZ]\n FIFO - path to a"
+            " named pipe, required argument\n BUFSIZ - chunk size to copy\n",
             argv[0]);
         exit(EXIT_FAILURE);
     }
+
+    bufsiz = 0;
+    if (argc == 3) {
+        bufsiz = strtol(argv[2], NULL, 0);
+    }
+    if (bufsiz == 0) {
+        bufsiz = BUFSIZ;
+    }
+
+    buffer = malloc(bufsiz);
+    if (buffer == NULL) {
+        printf("ftee: malloc failed");
+        exit(EXIT_FAILURE);
+    }
+
     fifonam = argv[1];
 
     readfd = open(fifonam, O_RDONLY | O_NONBLOCK);
     if (-1 == readfd) {
         perror("ftee: readfd: open()");
+        free(buffer);
         exit(EXIT_FAILURE);
     }
 
     if (-1 == fstat(readfd, &status)) {
         perror("ftee: fstat");
         close(readfd);
+        free(buffer);
         exit(EXIT_FAILURE);
     }
 
     if (!S_ISFIFO(status.st_mode)) {
         printf("ftee: %s is not a fifo!\n", fifonam);
         close(readfd);
+        free(buffer);
         exit(EXIT_FAILURE);
     }
 
@@ -53,13 +72,14 @@ int main(int argc, char* argv[])
     if (-1 == writefd) {
         perror("ftee: writefd: open()");
         close(readfd);
+        free(buffer);
         exit(EXIT_FAILURE);
     }
 
     close(readfd);
 
     while (1) {
-        bytes = read(STDIN_FILENO, buffer, sizeof(buffer));
+        bytes = read(STDIN_FILENO, buffer, bufsiz);
         if (bytes < 0 && errno == EINTR)
             continue;
         if (bytes <= 0)
@@ -78,5 +98,6 @@ int main(int argc, char* argv[])
         //}
     }
     close(writefd);
+    free(buffer);
     return (0);
 }
