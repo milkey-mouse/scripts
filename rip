@@ -1,14 +1,15 @@
 #!/bin/sh
 set -euo pipefail
 
-FORMAT="${FORMAT:-mp3}"
+FORMAT="${FORMAT:-flac}"
+FFMPEG_ARGS="-compression_level 12"
 TMPDIR="$(mktemp -d)"
 cd "${TMPDIR}"
 
 eject -t || :
 
 cdparanoia -B
-find . -type f -name '*.wav' -print0 | xargs -0n1 -P"$(nproc)" sh -c 'ffmpeg -y -i "$1" "$(printf "%s\n" "$1" | sed "s/\.cdda\.wav$/.'"${FORMAT}"'/")" && rm $1' sh
+find . -type f -name '*.wav' -print0 | xargs -0n1 -P"$(nproc)" sh -c 'ffmpeg -y -i "$1" '"${FFMPEG_ARGS}"' "$(printf "%s\n" "$1" | sed "s/\.cdda\.wav$/.'"${FORMAT}"'/")" && rm $1' sh
 eject
 
 if pgrep -u "${USER}" picard; then
