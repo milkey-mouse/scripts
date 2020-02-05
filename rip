@@ -10,7 +10,6 @@ eject -t || :
 
 cdparanoia -B
 find . -type f -name '*.wav' -print0 | xargs -0n1 -P"$(nproc)" sh -c 'ffmpeg -y -i "$1" '"${FFMPEG_ARGS}"' "$(printf "%s\n" "$1" | sed "s/\.cdda\.wav$/.'"${FORMAT}"'/")" && rm $1' sh
-eject
 
 if pgrep -u "${USER}" picard; then
     # picard is open already, let the user add the directory
@@ -19,4 +18,5 @@ else
     # move somewhere else in case picard wants to delete the empty tmpdir
     cd ~
     picard "${TMPDIR}"
+    eject
 fi
