@@ -1,0 +1,24 @@
+#!/bin/sh
+# alsa-toggle: toggle between ALSA control enum variants
+set -euo pipefail
+
+if [ "$#" == "0" ]; then
+  echo "usage: alsa-toggle [CONTROL] <amixer options>"
+  exit 1
+fi
+
+CONTROL="$1"
+shift
+
+CONTROL_STATE="$(amixer "$@" get "${CONTROL}")"
+
+if ! printf "%s" "${CONTROL_STATE}" | grep -Fqx '  Capabilities: enum'; then
+  printf "error: '%s' is not an enum\n" "${CONTROL}" >&2
+fi
+
+OPTIONS="$(printf "%s" "${CONTROL_STATE}" | grep -m 1 '^  Items: ' | grep -o "'[^']*'" | tr -d \')"
+OLD_OPTION="$(printf "%s" "${CONTROL_STATE}" | sed -n "s/^  Item0: '\(.*\)'$/\1/p" | head -n1)"
+NEW_OPTION="$(printf "%s\n%s" "${OPTIONS}" "${OPTIONS}" | grep -Fx -m1 -A2 "${OLD_OPTION}" | head -n2 | tail -n1)"
+
+printf "'%s': '%s' -> '%s'\n" "${CONTROL}" "${OLD_OPTION}" "${NEW_OPTION}"
+amixer "$@" set "${CONTROL}" "${NEW_OPTION}"

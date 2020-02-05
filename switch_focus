@@ -5,6 +5,6 @@ WINDOWS="$(swaymsg -t get_tree | jq -c '[while(.focused == false; .nodes[]?) | s
 
 [ "$1" = "-r" ] && WINDOWS="$(tac <<< "${WINDOWS}")"
 
-ID="$((echo "${WINDOWS}" && echo "${WINDOWS}") | grep -A2 '\[[0-9]*,true\]' | head -n2 | tail -n1 | cut -d, -f1 | tail -c+2)"
+ID="$(printf "%s\n%s" "${WINDOWS}" "${WINDOWS}" | grep -m1 -A2 '\[[0-9]*,true\]' | head -n2 | tail -n1 | cut -d, -f1 | tail -c+2)"
 
 swaymsg "[con_id=${ID}]" focus >/dev/null
