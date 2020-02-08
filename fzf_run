@@ -8,7 +8,7 @@ mkdir -p "$(dirname "${RUN_HISTORY}")"
 HISTORY="$(cut -d' ' -f2- "${RUN_HISTORY}")"
 CMD="$(
     (printf "%s" "${HISTORY}\n" && comm -23 <(compgen -c | sort -u) <(printf "%s" "${HISTORY}\n" | sort)) |
-    fzf --tiebreak=index --layout=reverse --color=16 --print-query "$@" | tail -n1
+    fzf --no-extended --tiebreak=index --layout=reverse --color=16 --print-query "$@" | tail -n1
 )"
 
 [ -z "${CMD}" ] && exit 1
