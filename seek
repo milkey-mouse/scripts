@@ -1,0 +1,55 @@
+#!/bin/sh
+# seek: search in mpv's playlist for a song and seek to it
+set -euo pipefail
+
+if [ "$#" == 0 ]; then
+  case "$(
+    printf '{ "command": ["get_property", "loop-playlist"] }\n' | \
+    nc -Uw 1 ~/.config/mpv/socket | head -n1 | jq -r .data
+  )" in
+    0*[2-9][0-9]*|inf|force)
+      FZF_OPTS="--cycle --query"
+      ;;
+    0*1|no|*)
+      FZF_OPTS="--query"
+      ;;
+  esac
+elif printf "%s" "$1" | grep -q '^[1-9][0-9]*$'; then
+  printf '{ "command": ["set_property", "playlist-pos-1", %s] }\n' "$1" | \
+  nc -Uw 1 ~/.config/mpv/socket | head -n1 > /dev/null
+  exit
+else
+  FZF_OPTS="--filter"
+fi
+
+#nl -nln -w1 -v0 -s. | \
+
+# if the playlist has over 30 entries, it's probably not a singular album with
+# defined order, or at least, fzf sorting by relevance is more useful than just
+# sorting matches by album order
+if (
+  printf '{ "command": ["get_property", "playlist-count"] }\n' | \
+  nc -Uw 1 ~/.config/mpv/socket | head -n1 | jq -er '.data > 30' > /dev/null
+); then
+  FZF_OPTS="--sort ${FZF_OPTS}"
+else
+  FZF_OPTS="--no-sort ${FZF_OPTS}"
+fi
+
+MATCH="$(
+  printf '{ "command": ["get_property", "playlist"] }\n' | \
+  nc -Uw 1 ~/.config/mpv/socket | head -n1 | \
+  jq -rj '.data | to_entries[] | "\(.key).\(.value.filename)\u0000"' | \
+  # TODO: use --height flag to make fzf not take up the whole screen?
+  fzf --no-sort --tac --delimiter='\.' --nth=2..-2 --with-nth=2.. --read0 ${FZF_OPTS} "$*"
+)"
+
+if [ -z "${MATCH}" ]; then
+  printf "No music matches the query; seek cancelled.\n" >&2
+  exit 1
+fi
+
+printf "%s" "${MATCH}" | \
+sed -nuz 's/^\([0-9]*[0-9]\)\..*$/{"command":["set_property","playlist-pos",\1]}\n/p' | \
+nc -Uw 1 ~/.config/mpv/socket | \
+jq --unbuffered -ner 'while(.request_id == null; input)' >/dev/null
