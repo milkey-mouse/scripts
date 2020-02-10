@@ -65,7 +65,7 @@ done
 
 APLAY_FORMAT="-t raw -f ${FORMAT} -c ${CHANNELS} -r ${RATE}"
 FORMAT_LOWER="$(printf "%s" "${FORMAT}" | tr -d _ | tr [:upper:] [:lower:])"
-MPV_FORMAT="--demuxer-rawaudio-format ${FORMAT_LOWER} --demuxer-rawaudio-channels ${CHANNELS} --demuxer-rawaudio-rate ${RATE}"
+MPV_FORMAT="--demuxer-rawaudio-format=${FORMAT_LOWER} --demuxer-rawaudio-channels=${CHANNELS} --demuxer-rawaudio-rate=${RATE}"
 FFMPEG_FORMAT="-f ${FORMAT_LOWER} -ac ${CHANNELS} -ar ${RATE}"
 
 record() {
