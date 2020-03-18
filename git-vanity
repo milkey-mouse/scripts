@@ -1,0 +1,4 @@
+#!/bin/sh
+
+export PYOPENCL_CTX=0
+exec python3.6 /home/milkey/github/git-vanity/git_vanity.py "$@"
