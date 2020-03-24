@@ -48,6 +48,8 @@ mime_types() {
         rm "${TMPDIR}/${collecting}"
         : $((collecting++))
     done
+    rm -rf "${TMPDIR}"
+    trap - EXIT
 }
 
 gen_playlist() {
