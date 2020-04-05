@@ -1,3 +1,5 @@
+cachedel
+cachestats
 cargo
 chromium
 fzf
@@ -9,6 +11,7 @@ slurp
 ice*
 yosys*
 nextpnr*
+nocache
 polyphone
 record.sh
 woff2_compress
