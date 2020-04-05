@@ -2,6 +2,8 @@
 # seek: search in mpv's playlist for a song and seek to it
 set -euo pipefail
 
+# TODO: make search terms non-case-sensitive (normalize to lowercase) in here and in play
+
 if [ "$#" == 0 ]; then
   case "$(
     printf '{ "command": ["get_property", "loop-playlist"] }\n' | \
@@ -41,7 +43,7 @@ MATCH="$(
   nc -Uw 1 ~/.config/mpv/socket | head -n1 | \
   jq -rj '.data | to_entries[] | "\(.key).\(.value.filename)\u0000"' | \
   # TODO: use --height flag to make fzf not take up the whole screen?
-  fzf --no-sort --tac --delimiter='\.' --nth=2..-2 --with-nth=2.. --read0 ${FZF_OPTS} "$*"
+  fzf -i --no-sort --tac --delimiter='\.' --nth=2..-2 --with-nth=2.. --read0 ${FZF_OPTS} "$*"
 )"
 
 if [ -z "${MATCH}" ]; then
