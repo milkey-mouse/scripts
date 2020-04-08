@@ -1,0 +1,3 @@
+#!/bin/sh
+
+exec GDK_BACKEND=wayland /usr/bin/solvespace "$@"
