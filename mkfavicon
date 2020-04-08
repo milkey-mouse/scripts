@@ -1,0 +1,18 @@
+#!/bin/sh
+# mkfavicon: make a scaled favicon from an svg
+set -euo pipefail
+
+if [ "$#" != "2" ]; then
+  echo "usage: mkfavicon in.svg out.ico"
+  exit
+fi
+
+TMPDIR="$(mktemp -d)"
+trap 'rm -r "${TMPDIR}"' EXIT
+
+for SIZE in 16 32 64; do
+    batik-rasterizer-1.9 -w ${SIZE} -h ${SIZE} -d "${TMPDIR}/favicon-${SIZE}.png" "$1"
+done
+
+icotool -c "${TMPDIR}"/favicon-*.png > "$2"
+
