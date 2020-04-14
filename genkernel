@@ -99,6 +99,29 @@ cmdline() {
     [ "${value}" != "" ] && printf "%s\n" "${value}"
 }
 
+# https://gitlab.com/cryptsetup/cryptsetup/-/issues/504
+deintegrify() {
+    TABLE="$(dmsetup table "$1" --showkeys)"
+
+    # bail out if unknown algorithm
+    printf "%s" "${TABLE}" | grep -q "capi:authenc(hmac(sha256),.*)-plain64"
+
+    KEY_LENGTH_BYTES=64
+    OLD_KEY="$(printf "%s" "${TABLE}" | cut -f5 -d' ')"
+    NEW_KEY="$(printf "%s" "${OLD_KEY}" | head -c$(( KEY_LENGTH_BYTES * 2 )))"
+
+    #echo -n "old: "; dmsetup table "$1"
+
+    dmsetup remove "$1"
+    printf "%s\n" "${TABLE}" | sed \
+      -e "s/capi:authenc(hmac(sha256),\(.*\))\([^ ]*\) /capi:\1\2 /" \
+      -e "s/${OLD_KEY}/${NEW_KEY}/" \
+      -e "s/ integrity:[^ ]*//" | \
+      awk '{ $9--; print $0 }' | dmsetup create --readonly "$1"
+
+    #echo -n "new: "; dmsetup table "$1"
+}
+
 export PATH=/bin
 alias cryptsetup="cryptsetup --disable-locks"
 alias mount="mount -n"
@@ -137,8 +160,17 @@ done
 printf "Opened ${CRYPT_ROOT_PATH} as /dev/mapper/root.\n"
 
 if ! mount /dev/mapper/root /mnt; then
-    printf "Could not mount /dev/mapper/root.\n"
-    exit 1
+    if deintegrify root; then
+        printf "!!!!!!!!!!! AEAD integrity data failed to validate. Someone\n"
+        printf "! WARNING ! may have tampered with your disk, or shut down\n"
+        printf "!!!!!!!!!!! abruptly. Press Enter to boot in read-only mode.\n"
+        read
+
+        mount -o ro /dev/mapper/root /mnt
+    else
+        printf "Could not mount /dev/mapper/root.\n"
+        exit 1
+    fi
 fi
 
 umount /sys
@@ -168,6 +200,7 @@ dir /sys 0555 0 0
 dir /tmp 1777 0 0
 # busybox
 file /bin/cryptsetup /sbin/cryptsetup 0755 0 0
+file /bin/dmsetup /sbin/dmsetup.static 0755 0 0
 file /bin/busybox /bin/busybox 0755 0 0
 slink /bin/sh busybox 0777 0 0
 file /init ${INIT_LOCATION} 0755 0 0
