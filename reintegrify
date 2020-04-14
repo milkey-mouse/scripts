@@ -1,0 +1,74 @@
+#!/bin/sh
+set -euo pipefail
+
+if [ "$#" == 0 ] || [ "$#" == 2 ]; then
+  printf "usage: reintegrify <name> [--sectors <S1> <S2>...]"
+  exit 1
+fi
+
+DEVICE="$1"
+
+# save table layout to revert to
+TABLE="$(dmsetup table "${DEVICE}" --showkeys)"
+
+# bail out if unknown algorithm
+printf "%s" "${TABLE}" | grep -q "capi:authenc(hmac(sha256),.*)-plain64"
+
+mkdir -p "/tmp/badblocks-${DEVICE}"
+
+if [ "$#" == 1 ]; then
+  # scan for (but don't read) bad blocks
+  echo "scanning blocks"
+  (cd "/tmp/badblocks-${DEVICE}"; badblocks -b 1024 -s "/dev/mapper/${DEVICE}" | xargs touch)
+else
+  # we are only repairing the specified broken blocks
+  shift 2
+  for KSECTOR in "$@"; do
+    # kernel's dm-crypt+integrity block size is always 512. ours is 1024. div by 2.
+    touch "/tmp/badblocks-${DEVICE}/$(( ${KSECTOR} / 2 ))"
+  done
+fi
+
+# temporarily change device-mapper table to not verify integrity data
+# https://gitlab.com/cryptsetup/cryptsetup/-/issues/504
+KEY_LENGTH_BYTES=64
+OLD_KEY="$(printf "%s" "${TABLE}" | cut -f5 -d' ')"
+NEW_KEY="$(printf "%s" "${OLD_KEY}" | head -c$(( KEY_LENGTH_BYTES * 2 )))"
+
+echo "disabling integrity passthrough on new_root"
+
+dmsetup suspend "${DEVICE}"
+printf "%s\n" "${TABLE}" | sed \
+  -e "s/capi:authenc(hmac(sha256),\(.*\))\([^ ]*\) /capi:\1\2 /" \
+  -e "s/${OLD_KEY}/${NEW_KEY}/" \
+  -e "s/ integrity:[^ ]*//" | \
+  awk '{ $9--; print $0 }' | dmsetup reload "${DEVICE}"
+dmsetup resume "${DEVICE}"
+
+echo "reading blocks"
+
+# read blocks with integrity disabled
+ls "/tmp/badblocks-${DEVICE}" | xargs -I{} -P64 dd if="/dev/mapper/${DEVICE}" of="/tmp/badblocks-${DEVICE}/"{} bs=1024 skip={} count=1 iflag=direct
+sync
+
+echo "enabling integrity passthrough on new_root"
+
+# re-enable integrity checking
+dmsetup suspend "${DEVICE}"
+dmsetup reload "${DEVICE}" --table="${TABLE}"
+dmsetup resume "${DEVICE}"
+
+echo "writing blocks"
+
+# write our bad blocks back out into disk, dm-integrity will recompute checksums
+ls "/tmp/badblocks-${DEVICE}" | xargs -I{} -P64 dd if="/tmp/badblocks-${DEVICE}/"{} of="/dev/mapper/${DEVICE}" bs=1024 seek={} count=1 oflag=direct
+sync
+
+sleep 1
+
+# tear down and reactivate everything for good measure:
+# https://www.redhat.com/archives/dm-devel/2018-June/msg00150.html
+dmsetup remove "${DEVICE}"
+dmsetup create "${DEVICE}" --table="${TABLE}"
+
+rm -r "/tmp/badblocks-${DEVICE}"
