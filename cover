@@ -2,91 +2,121 @@
 # cover: show album covers for currently playing music
 set -euo pipefail
 
-# try to move to mpv's working directory in case media paths are based on it
-
-TMPFILE="$(mktemp -ut mpv-pid.XXXXX)"
-mkfifo "${TMPFILE}"
-jq -cn '{"command":["run", "bash", "-c", "printf '%s' $PPID > " + $ARGS.positional[0]]}' --args "${TMPFILE}" | \
-nc -Uw 1 ~/.config/mpv/socket | head -n1 >/dev/null
-MPV_PID="$(cat "${TMPFILE}")"
-rm -f "${TMPFILE}"
+# retry a cmd a certain number of times (handles some race conditions in mpv)
+racy() {
+  SLEEP=$1
+  TRIES=$2
+  for i in $(seq 0 ${TRIES}); do
+    if eval "$3"; then
+      break
+    elif [ ${i} == ${TRIES} ]; then
+      return 1
+    else
+     sleep ${SLEEP} || sleep 1
+    fi
+  done
+}
 
 # create alias for stdout for subshell
 exec 3>&1
 exec mvi --really-quiet --force-window --idle=yes --no-input-terminal --input-file=<(
+  #BASH_XTRACEFD=3
+  exec 2>&3
   set -eu
+
   trap 'echo quit 2>/dev/null' EXIT
   trap 'break 2>/dev/null || exit' PIPE
-  trap 'break 2>/dev/null || exit' INT
+  trap 'INTERRUPT=1; break 2>/dev/null || exit' INT
 
-  if [ ! -z "${MPV_PID}" ]; then
-    cd /proc/${MPV_PID}/cwd
-  fi
+  while pgrep -u "${UID}" mpv | grep -Fxv "$$" | grep -q .; do
+    # try to move to mpv's working directory in case media paths are based on it
 
-  clear-playlist() {
-    jq -cn '{ "command": ["playlist-clear"] }'
-    jq -cn '{ "command": ["playlist-remove", "current"] }'
-  }
+    TMPFILE="$(mktemp -ut mpv-pid.XXXXX)"
+    mkfifo "${TMPFILE}"
+    racy 0.1 3 "$(cat << '    EOF'
+      jq -cn '{"command":["run", "bash", "-c", "printf '%s' $PPID > " + $ARGS.positional[0]]}' --args "${TMPFILE}" | \
+      nc -Uw 1 ~/.config/mpv/socket | head -n1 >/dev/null
+    EOF
+    )"
+    MPV_PID="$(cat "${TMPFILE}")"
+    rm -f "${TMPFILE}"
 
-  replace-playlist() {
-    # we can't/shouldn't just tell mpv to load a new playlist from a temporary
-    # file because filenames with newlines, spaces, etc. must be escaped, and
-    # only the JSON API provides for that
-    jq -cn '{ "command": ["loadfile", $ARGS.positional[0], "replace"] }' --args "$(head -n1 <<< "$1")"
-    jq -cn '{ "command": ["playlist-clear"] }'
-    tail -n+2 <<< "$1" | xargs jq -cn '$ARGS.positional[] | { "command": ["loadfile", ., "append"] }' --args
-  }
 
-  LASTDIR=""
-  LINES=0
-  while :; do
-    # there is a race condition with mpv's responses over the socket. retry
-    # play? a few times in case it doesn't work.
-    for i in {1..3}; do
-      METADATA="$(play? 2>&3)" && break || sleep 0.1 || sleep 1
-    done
-
-    # clear the old metadata from the terminal
-    if [ -t 3 ] && [ "${LINES}" != "0" ]; then
-      (
-        # for each line in the old metadata, clear one & move cursor up
-        (yes $'\033[2K\033[1A' || :) | head -n "${LINES}" | tr -d '\n'
-        # reset cursor position to beginning of line
-        printf '\033[2K\r'
-      ) >&3
+    if [ ! -z "${MPV_PID}" ]; then
+      cd /proc/${MPV_PID}/cwd
     fi
 
-    if [ -z "${METADATA}" ]; then
-      clear-playlist
-    else
-      # remember how many lines we print so we can clear them later
-      LINES="$(printf "%s\n" "${METADATA}" | tee /dev/fd/3 | wc -l)"
+    clear-playlist() {
+      jq -cn '{ "command": ["playlist-clear"] }'
+      jq -cn '{ "command": ["playlist-remove", "current"] }'
+    }
 
-      # TODO: this logic fails with newlines in filenames
-      # we can't just use -0 and -Z everywhere because bash vars can't hold nulls
-      PLAYPATH="$(printf "%s" "${METADATA}" | grep '^Path:' | cut -d' ' -f2-)"
-      if [ -e "${PLAYPATH}" ]; then
-        PLAYDIR="$(realpath "$(dirname "${PLAYPATH}")")"
-        if [ "${PLAYDIR}" != "${LASTDIR}" ]; then
-          LASTDIR="${PLAYDIR}"
-          COVERS="$(
-            find -L "${PLAYDIR}" -type f -name '*cover*' -exec \
-              file --dereference --mime-type --no-pad {} \; | \
-            grep -Po '^.*(?=: image/[0-9a-z-]*$)' | \
-            awk '{ print length($0) " " $0; }' | sort -ns | cut -d' ' -f2- || :
-          )"
-          if [ -z "${COVERS}"  ]; then
-            clear-playlist
-          else
-            replace-playlist "${COVERS}"
+    replace-playlist() {
+      # we can't/shouldn't just tell mpv to load a new playlist from a temporary
+      # file because filenames with newlines, spaces, etc. must be escaped, and
+      # only the JSON API provides for that
+      jq -cn '{ "command": ["loadfile", $ARGS.positional[0], "replace"] }' --args "$(head -n1 <<< "$1")"
+      jq -cn '{ "command": ["playlist-clear"] }'
+      tail -n+2 <<< "$1" | xargs jq -cn '$ARGS.positional[] | { "command": ["loadfile", ., "append"] }' --args
+    }
+
+    LASTDIR=""
+    LINES=0
+    while :; do
+      # there is a race condition with mpv's responses over the socket. retry
+      # play? a few times in case it doesn't work.
+      METADATA="$(racy 0.1 3 play? 2>&3)"
+
+      # clear the old metadata from the terminal
+      if [ -t 3 ] && [ "${LINES}" != "0" ]; then
+        (
+          # for each line in the old metadata, clear one & move cursor up
+          (yes $'\033[2K\033[1A' || :) | head -n "${LINES}" | tr -d '\n'
+          # reset cursor position to beginning of line
+          printf '\033[2K\r'
+        ) >&3
+      fi
+
+      if [ ! -z "${METADATA}" ]; then
+        # remember how many lines we print so we can clear them later
+        LINES="$(printf "%s\n" "${METADATA}" | tee /dev/fd/3 | wc -l)"
+
+        # TODO: this logic fails with newlines in filenames
+        # we can't just use -0 and -Z everywhere because bash vars can't hold nulls
+        PLAYPATH="$(printf "%s" "${METADATA}" | grep '^Path:' | cut -d' ' -f2-)"
+        if [ -e "${PLAYPATH}" ]; then
+          PLAYDIR="$(realpath "$(dirname "${PLAYPATH}")")"
+          if [ "${PLAYDIR}" != "${LASTDIR}" ]; then
+            LASTDIR="${PLAYDIR}"
+            COVERS="$(
+              find -L "${PLAYDIR}" -type f -name '*cover*' -exec \
+                file --dereference --mime-type --no-pad {} \; | \
+              grep -Po '^.*(?=: image/[0-9a-z-]*$)' | \
+              awk '{ print length($0) " " $0; }' | sort -ns | cut -d' ' -f2- || :
+            )"
+            if [ -z "${COVERS}"  ]; then
+              clear-playlist
+            else
+              replace-playlist "${COVERS}"
+            fi
           fi
         fi
       fi
-    fi
 
-    nc -U ~/.config/mpv/socket 2>/dev/null | jq -n 'while(.event!="metadata-update"; input)' >/dev/null 2>&1 &
-    wait -n $! $$
-    # check if the pipe is broken (i.e. if our parent mpv has exited)
-    echo 2>/dev/null || break
+      nc -U ~/.config/mpv/socket 2>/dev/null | jq -n 'while(.event!="metadata-update"; input)' >/dev/null 2>&1 &
+      wait -n $! $$ || break
+      # check if the pipe is broken (i.e. if our parent mpv has exited)
+      echo 2>/dev/null || break
+    done
+
+    # if our mpv closes (and we weren't explicitly told to close), wait a
+    # little bit and check for a new one in case it was closed by starting
+    # another singleton-wrapped (i.e. play) mpv
+    if [ ! -z "${INTERRUPT+x}" ]; then
+      racy 0.1 10 'pgrep -u "${UID}" mpv | grep -Fxv "$$" | grep -q .' || break
+
+      # still racy, so give a little extra delay as a treat (like salami)
+      sleep 0.5
+    fi
   done
 )
