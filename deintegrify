@@ -1,0 +1,30 @@
+#!/bin/busybox sh
+# redirect root to snapshot and disable integrity checking
+# on startup, run reintegrify-root in the background
+set -euo pipefail
+
+{
+  # save original table mapping
+  TABLE="$(dmsetup table "$1" --showkeys)"
+
+  # bail out if unknown algorithm
+  printf "%s" "${TABLE}" | grep -q "capi:authenc(hmac(sha256),.*)-plain64"
+
+  # copy original mapping to new name
+  printf '%s' "${TABLE}" | dmsetup create "$1_integ"
+
+  # truncate key (remove integrity data)
+  # https://gitlab.com/cryptsetup/cryptsetup/-/issues/504
+  KEY_LENGTH_BYTES=64
+  OLD_KEY="$(printf "%s" "${TABLE}" | cut -f5 -d' ')"
+  NEW_KEY="$(printf "%s" "${OLD_KEY}" | head -c$(( KEY_LENGTH_BYTES * 2 )))"
+
+  printf "%s\n" "${TABLE}" | sed \
+    -e "s/capi:authenc(hmac(sha256),\(.*\))\([^ ]*\) /capi:\1\2 /" \
+    -e "s/${OLD_KEY}/${NEW_KEY}/" \
+    -e "s/ integrity:[^ ]*//" | \
+    awk '{ $9--; print $0 }' | dmsetup reload "$1"
+  dmsetup suspend "$1" && dmsetup resume "$1"
+
+  exit
+}

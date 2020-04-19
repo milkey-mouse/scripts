@@ -1,0 +1,59 @@
+#!/bin/sh
+set -euo pipefail
+
+dm_name_to_major_minor() {
+  dmsetup info "$1" | sed -n 's/^Major, minor: *\([0-9]*\), \([0-9]*\)$/\1:\2/p'
+}
+
+if  [ ! -b /dev/ram0 ]; then
+  printf "Need ramdisk\n"
+  exit 1
+fi
+
+if [ $# != 1 ]; then
+  echo "usage: create-snapshot <device>"
+  exit 1
+elif dmsetup ls -o devname | cut -f1 | grep -Fxq "$1"; then
+  SIZE="$(blockdev --getsz "/dev/mapper/$1")"
+  DEVICE="$1"
+  #ORIGIN="/dev/mapper/$1_base"
+
+  dmsetup create "$1_base" --notable
+  dmsetup table "$1" --showkeys | dmsetup load "$1_base"
+  dmsetup resume "$1_base"
+  ORIGIN="$(dm_name_to_major_minor "$1_base")"
+elif [ -b "$1" ]; then
+  SIZE="$(blockdev --getsz "$1")"
+  DEVICE="$(basename "$1")_snap"
+  ORIGIN="$1"
+else
+  printf "Argument must be either a block device or device-mapper name\n"
+  exit 1
+fi
+
+# https://www.redhat.com/archives/dm-devel/2004-August/msg00001.html
+# https://www.kernel.org/doc/Documentation/device-mapper/snapshot.txt
+
+#dmsetup create "$1_org" --notable
+#dmsetup load "$1_org" --table="0 ${SIZE} snapshot-origin ${ORIGIN}"
+#...
+#dmsetup resume "$1_org" "$1"
+
+# create snapshot-origin "tag" snapshots are based on
+dmsetup create "${DEVICE}_org" --table="0 ${SIZE} snapshot-origin ${ORIGIN}"
+
+# the persistent (P) flag is needed for merge-snapshot later
+# note: we use a brd ramdisk (not a tmpfs file) mainly because if we are in the
+# initramfs, switch_root will recursively delete everything in it, including
+# our backing file, which would be bad...
+# there is probably also a slight performance boost from not going through the
+# VFS machinery for, what, like the fourth time?
+TABLE="0 ${SIZE} snapshot ${ORIGIN} /dev/ram0 P 8"
+
+# if the device exists, just reload it. otherwise, make a new one
+if dmsetup ls -o devname | cut -f1 | grep -Fxq "$1"; then
+  dmsetup reload "${DEVICE}" --table="${TABLE}"
+  dmsetup suspend "${DEVICE}" && dmsetup resume "${DEVICE}"
+else
+  dmsetup create "${DEVICE}" --table="${TABLE}"
+fi

@@ -1,0 +1,70 @@
+#!/bin/sh
+set -euo pipefail
+
+BLOCKSIZE=512
+
+if cut -d' ' -f1 /proc/mounts | grep -Fxq /dev/mapper/root; then
+  # create a self-contained tmpfs to run the script in
+  # (so we can suspend root without hanging the script)
+  # NOTE: don't mount /tmp with noexec or this doesn't work
+  if [ -z "${IN_CHROOT+x}" ]; then
+    TMPDIR="$(mktemp -d)"
+    trap 'umount-recursive "${TMPDIR}" 2>/dev/null || :; rm -r "${TMPDIR}"' EXIT
+
+    mkdir "${TMPDIR}"/{bin,proc,sys,dev}
+    for CMD in badblocks busybox create-snapshot deintegrify dd dmsetup e2fsck merge-snapshot reintegrify-root; do
+      cp "$(command -v "${CMD}.static" || command -v "${CMD}")" "${TMPDIR}/bin/${CMD}"
+    done
+    ln -s /bin/busybox "${TMPDIR}/bin/sh"
+
+    mount --types proc /proc "${TMPDIR}/proc"
+    mount --rbind /sys "${TMPDIR}/sys"
+    mount --make-rslave "${TMPDIR}/sys"
+    mount --rbind /dev "${TMPDIR}/dev"
+    mount --make-rslave "${TMPDIR}/dev"
+
+    IN_CHROOT=true chroot "${TMPDIR}" /bin/reintegrify-root "$@"
+    exit
+  else
+    export PATH=/bin
+
+    alias dmsetup="dmsetup --noudevrules --noudevsync"
+  fi
+fi
+
+dmsetup mknodes
+
+if [ ! -b /dev/mapper/root_integ ]; then
+  deintegrify root
+  # e2fsck will only work if root isn't mounted
+  # (i.e. we are in the initramfs)
+  if ! cut -d' ' -f1 /proc/mounts | grep -Fxq /dev/mapper/root; then
+    if [ -t 0 ]; then
+      e2fsck -C0 /dev/mapper/root || :
+    else
+      e2fsck -pC0 /dev/mapper/root || :
+    fi
+  fi
+fi
+
+if [ ! -b /dev/mapper/root_base ]; then
+  create-snapshot root
+fi
+
+badblocks -b "${BLOCKSIZE}" -s /dev/mapper/root_integ "$(blockdev --getsz /dev/mapper/root_integ)" "$@" | \
+awk '{l=p=$1}{while((r=getline)>=0){if($1==p+1){p=$1;continue};print("/bin/dd if=/dev/mapper/root_base of=/dev/mapper/root_integ bs='"${BLOCKSIZE}"' skip="l" seek="l" count="p-l+1" status=none iflag=fullblock,direct oflag=sync,direct");l=p=$1;if(r==0){ break };}}' | sh
+
+sync && sleep 1  # pure paranoia
+
+dmsetup table --showkeys root_integ | dmsetup reload root_base
+dmsetup suspend root_base && dmsetup resume root_base
+dmsetup remove root_integ
+
+merge-snapshot root
+
+sync && sleep 1
+# busybox's freeramdisk is the only reliable tool I have found. strace
+# investigations indicate the ramdisk needs to be opened O_RDWR for
+# ioctl(FLUSHBUFS) to actually clear it, which blockdev doesn't do
+# blockdev --flushbufs /dev/ram0
+freeramdisk /dev/ram0

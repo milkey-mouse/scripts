@@ -1,0 +1,45 @@
+#!/bin/busybox sh
+set -euo pipefail
+
+{
+  if dmsetup ls -o devname | cut -f1 | grep -Fxq "$1"; then
+    SNAPSHOT="$1"
+  elif [ -b "$1" ]; then
+    SNAPSHOT="$(basename "$1")_snap"
+  else
+    printf "Argument must be either a block device or device-mapper name\n"
+    exit 1
+  fi
+
+  # replace snapshot with snapshot-merge
+  dmsetup table "${SNAPSHOT}" | sed 's/snapshot/snapshot-merge/' | dmsetup reload "${SNAPSHOT}"
+
+  # remove old snapshot-origin
+  dmsetup remove "${SNAPSHOT}_org"
+
+  # resume what is now snapshot-merge
+  dmsetup suspend "${SNAPSHOT}" && dmsetup resume "${SNAPSHOT}"
+
+  TO_COMMIT="placeholder"
+  METADATA="0"
+  while [ "${TO_COMMIT}" != "${METADATA}" ]; do
+    TO_COMMIT="$(dmsetup status "${SNAPSHOT}" | cut -d' ' -f4 | cut -d/ -f1)"
+    METADATA="$(dmsetup status "${SNAPSHOT}" | cut -d' ' -f5)"
+    printf 'committing %s sectors          \r' "$(( ${TO_COMMIT} - ${METADATA} ))"
+    sleep 0.1
+  done
+  printf '\n'
+
+  if dmsetup ls -o devname | cut -f1 | grep -Fxq "${SNAPSHOT}_base"; then
+    dmsetup table "${SNAPSHOT}_base" --showkeys | dmsetup reload "${SNAPSHOT}"
+    dmsetup suspend "${SNAPSHOT}" && dmsetup resume "${SNAPSHOT}"
+    dmsetup remove "${SNAPSHOT}_base"
+  else
+    # create passthrough
+    # we suspend after reloading because otherwise we can't read the next line!
+    dmsetup reload "${SNAPSHOT}" --table="$(dmsetup table "${SNAPSHOT}" | cut -d' ' -f-2) linear $1 0"
+    dmsetup suspend "${SNAPSHOT}" && dmsetup resume "${SNAPSHOT}"
+  fi
+
+  exit
+}
