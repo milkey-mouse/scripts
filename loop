@@ -2,10 +2,12 @@
 set -euo pipefail
 
 if [ "$#" == 0 ]; then
-  printf '{ "command": ["cycle-values", "loop", "inf", "no"] }\n'
-else
-  printf '{ "command": ["cycle-values", "loop", %s] }\n' "$1"
-fi | nc -Uw 1 ~/.config/mpv/socket | head -n1 > /dev/null
+  printf '{ "command": ["cycle-values", "loop", "inf", "no"] }\n' | \
+  nc -Uw 1 ~/.config/mpv/socket | head -n1 > /dev/null
+elif [ "$1" != "?" ]; then
+  printf '{ "command": ["cycle-values", "loop", %s] }\n' "$1" | \
+  nc -Uw 1 ~/.config/mpv/socket | head -n1 > /dev/null
+fi
 
 printf '{ "command": ["get_property", "loop"] }\n' | \
 nc -Uw 1 ~/.config/mpv/socket | head -n1 | jq -r '"loop: \(.data)"'
