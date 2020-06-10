@@ -1,0 +1,37 @@
+#!/bin/sh
+set -euo pipefail
+
+# All this needs to do for now is install additional targets, gentoo handles the rest
+# note: apparently this doesn't work with custom-built rustc...
+
+if rustc --version | grep -q -- -dev; then
+  printf 'error: use a stable version of rustc\n'
+  exit 1
+fi
+
+install_std() {
+  FILENAME="rust-std-$(rustc --version | cut -d' ' -f2-)-$1"
+  curl -LO "https://static.rust-lang.org/dist/${FILENAME}.tar.gz"{,.asc} | \
+      gpg --no-default-keyring --keyring /usr/local/lib/rustlib/rust-keyring.asc --verify - "${FILENAME}.tar.gz"
+  # TODO: this should probably call the ./install.sh script in the
+  # tarball, but extracting it to the known-good place seems safer
+  tar -zxvf "${FILENAME}.tar.gz" "${FILENAME}/rust-std-$1/lib/rustlib" --strip-components 4
+  rm "${FILENAME}.tar.gz"
+
+  ln -vfs "$(realpath $1)" /usr/lib/rustlib/$1
+}
+
+mkdir -p /usr/local/lib/rustlib || :
+cd /usr/local/lib/rustlib
+
+if [ "$#" != 0 ]; then
+  install_std "$1"
+else
+  for DIR in *; do
+    if [ -d "${DIR}" ]; then
+      install_std "${DIR}"
+    fi
+  done
+  # handled by gentoo:
+  #install_std x86_64-unknown-linux-gnu
+fi
