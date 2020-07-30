@@ -9,6 +9,7 @@ rrsync
 git-identity
 grim
 slurp
+ecp*
 ice*
 yosys*
 nextpnr*
