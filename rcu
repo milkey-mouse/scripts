@@ -1,0 +1,7 @@
+#!/bin/bash
+
+cd ~/git/rcu
+source venv/bin/activate
+
+cd rcu/src
+exec python main.py
