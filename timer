@@ -1,11 +1,27 @@
 #!/bin/sh
 set -euo pipefail
 
+list_timers() {
+    pgrep -axu "${UID}" timer | grep -ve "^$$" | \
+        sed 's#/.*/timer\( --bg\)*#timer#g;' | \
+        xargs -rL1 sh -c 'echo "$@" "@ $(ps -q "$1" -o start | tail -n1)"' sh
+}
+
 if [ "$#" == "0" ]; then
-  pgrep -axu "${UID}" timer | grep -v "^$$" | sed 's#/.*/timer\( --bg\)*#timer#g;' | xargs -rL1 sh -c 'echo "$@" "@ $(ps -q "$1" -o start | tail -n1)"' sh
-  exit 0
+  list_timers
+  exit
+elif [ "$1" == "cancel" ]; then
+  if [ "$#" == "1" ]; then
+    printf 'usage: timer cancel <PATTERN>\n' >&2
+    exit 1
+  else
+    shift
+    list_timers | grep -v "^[0-9]* timer cancel" | grep "$*" | \
+        cut -d' ' -f1 | xargs -r kill
+    exit
+  fi
 elif [ "$1" != "--bg" ]; then
-  swaymsg exec -- "$0" --bg "$@" && exit 0
+  swaymsg exec -- "$0" --bg "$@" && exit
 else
   shift
 fi
