@@ -142,7 +142,7 @@ mkfifo "${LOGFILE}"
 ) &
 
 mpv --idle --loop-playlist $(grep -oz -- '--[^ ]*' <<<"$*" | tr '\0' ' ') \
-    --log-file="${LOGFILE}"
+    --x11-name=play --wayland-app-id=play --log-file="${LOGFILE}"
 
 # exit code 4 means mpv was stopped by SIGINT (or a quit keybind)
 # if $PLAYLIST still exists, we never connected to the IPC socket
