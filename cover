@@ -2,6 +2,8 @@
 # cover: show album covers for currently playing music
 set -euo pipefail
 
+export PS4='+(${BASH_SOURCE}:${LINENO}): ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
+
 # retry a cmd a certain number of times (handles some race conditions in mpv)
 racy() {
   SLEEP=$1
@@ -17,69 +19,100 @@ racy() {
   done
 }
 
-# create alias for stdout for subshell
-exec 3>&1
-exec mvi --really-quiet --force-window --idle=yes --no-input-terminal --input-file=<(
-  #BASH_XTRACEFD=3
-  exec 2>&3
-  set -eu
+find_mpv() {
+  for p in $(pgrep -u ${UID} mpv); do
+    find /proc/${p}/task/${p}/fd -type l -exec readlink '{}' + | \
+    grep -Fxqf <(
+      grep ~/.config/mpv/socket /proc/net/unix | cut -d' ' -f7 | \
+      sed 's/^\(.*\)$/socket:[\1]/'
+    ) && printf '%s\n' "${p}" || :
+  done
+}
 
-  trap 'echo quit 2>/dev/null' EXIT
-  trap 'break 2>/dev/null || exit' PIPE
-  trap 'INTERRUPT=1; break 2>/dev/null || exit' INT
+clear-playlist() {
+  jq -cn '{ "command": ["playlist-clear"] }'
+  jq -cn '{ "command": ["playlist-remove", "current"] }'
+}
 
-  while pgrep -u "${UID}" mpv | grep -Fxv "$$" | grep -q .; do
+replace-playlist() {
+  # we can't/shouldn't just tell mpv to load a new playlist from a temporary
+  # file because filenames with newlines, spaces, etc. must be escaped, and
+  # only the JSON API provides for that
+  # TODO: doesn't work for filenames with spaces
+  jq -cn '{ "command": ["loadfile", $ARGS.positional[0], "replace"] }' --args "$(head -n1 <<< "$1")"
+  jq -cn '{ "command": ["playlist-clear"] }'
+  tail -n+2 <<< "$1" | xargs jq -cn '$ARGS.positional[] | { "command": ["loadfile", ., "append"] }' --args
+}
+
+if ! pgrep -u ${UID} mpv; then
+  # no mpv to attach to
+  printf 'error: no mpv\n'
+  exit 1
+fi
+
+IPC_SOCKET="$(mktemp -u)"
+
+coproc ipc {
+  # wait for our IPC socket to open
+  while [ ! -S "${IPC_SOCKET}" ]; do
+    sleep 0.1
+  done
+  nc -U "${IPC_SOCKET}"
+}
+
+# duplicate IPC to non-CLOEXEC file descriptors the subshell can inherit
+exec 3>&"${ipc[1]}"
+exec 4<&"${ipc[0]}"
+
+(
+  set -eux
+
+  # if we're initiating our exit, we need to tell mvi
+  trap 'jq -cn "{ \"command\": [\"quit\"] }" >&3' EXIT
+
+  # if we get SIGPIPE, our IPC is closed and mvi is already dead (omae wa mou)
+  trap 'exit' PIPE
+
+  # if we get SIGINT, it probably came from the parent and propagated to us, so
+  # mvi is probably already dead
+  trap 'exit' INT
+
+  while :; do
+    # export so play? can use it
+    export MPV_PID="${MPV_PID-$(racy 0.25 3 find_mpv)}"
+
+    #if printf "%s" "${MPV_PID}" | grep -q '\n'; then
+    if [[ "${MPV_PID}" == *$'\n'* ]]; then
+      printf "error: multiple mpv's seem to have the socket open:\n%s" "${MPV_PID}" >&2
+      exit 1
+    fi
+
     # try to move to mpv's working directory in case media paths are based on it
-
-    TMPFILE="$(mktemp -ut mpv-pid.XXXXX)"
-    mkfifo "${TMPFILE}"
-    racy 0.1 3 "$(cat << '    EOF'
-      jq -cn '{"command":["run", "bash", "-c", "printf '%s' $PPID > " + $ARGS.positional[0]]}' --args "${TMPFILE}" | \
-      nc -Uw 1 ~/.config/mpv/socket | head -n1 >/dev/null
-    EOF
-    )"
-    MPV_PID="$(cat "${TMPFILE}")"
-    rm -f "${TMPFILE}"
-
-
     if [ ! -z "${MPV_PID}" ]; then
       cd /proc/${MPV_PID}/cwd
     fi
 
-    clear-playlist() {
-      jq -cn '{ "command": ["playlist-clear"] }'
-      jq -cn '{ "command": ["playlist-remove", "current"] }'
-    }
-
-    replace-playlist() {
-      # we can't/shouldn't just tell mpv to load a new playlist from a temporary
-      # file because filenames with newlines, spaces, etc. must be escaped, and
-      # only the JSON API provides for that
-      jq -cn '{ "command": ["loadfile", $ARGS.positional[0], "replace"] }' --args "$(head -n1 <<< "$1")"
-      jq -cn '{ "command": ["playlist-clear"] }'
-      tail -n+2 <<< "$1" | xargs jq -cn '$ARGS.positional[] | { "command": ["loadfile", ., "append"] }' --args
-    }
-
     LASTDIR=""
     LINES=0
     while :; do
+      set -e
+
       # there is a race condition with mpv's responses over the socket. retry
       # play? a few times in case it doesn't work.
-      METADATA="$(racy 0.1 3 play? 2>&3)"
+      METADATA="$(racy 0.1 3 play?)"
 
       # clear the old metadata from the terminal
-      if [ -t 3 ] && [ "${LINES}" != "0" ]; then
-        (
+      if [ -t 1 ] && [ "${LINES}" != "0" ]; then
           # for each line in the old metadata, clear one & move cursor up
           (yes $'\033[2K\033[1A' || :) | head -n "${LINES}" | tr -d '\n'
           # reset cursor position to beginning of line
           printf '\033[2K\r'
-        ) >&3
       fi
 
       if [ ! -z "${METADATA}" ]; then
         # remember how many lines we print so we can clear them later
-        LINES="$(printf "%s\n" "${METADATA}" | tee /dev/fd/3 | wc -l)"
+        LINES="$(printf "%s\n" "${METADATA}" | wc -l)"
+        printf "%s\n" "${METADATA}"
 
         # TODO: this logic fails with newlines in filenames
         # we can't just use -0 and -Z everywhere because bash vars can't hold nulls
@@ -98,25 +131,78 @@ exec mvi --really-quiet --force-window --idle=yes --no-input-terminal --input-fi
               clear-playlist
             else
               replace-playlist "${COVERS}"
-            fi
+            fi >&3
           fi
         fi
       fi
 
-      nc -U ~/.config/mpv/socket 2>/dev/null | jq -n 'while(.event!="metadata-update"; input)' >/dev/null 2>&1 &
-      wait -n $! $$ || break
-      # check if the pipe is broken (i.e. if our parent mpv has exited)
-      echo 2>/dev/null || break
+      # we use this later to find which mpv's are new
+      ALL_MPVS="$(pgrep -u ${UID} mpv)"$'\n'"$$"
+
+      # select(2) in bash lol
+      PARENT=$BASHPID
+
+      EVENT=""
+      trap "EVENT=metadata-update" USR1
+      trap "EVENT=mpv-die" USR2
+      trap "EVENT=mvi-die" QUIT
+
+      (
+        trap 'echo "you killed mpv" >&2; exit' INT
+        case "$(nc -U ~/.config/mpv/socket </dev/null | jq -rn '
+          until(.event=="metadata-update" or .event=="shutdown" or .reason=="quit"; input) |
+          if .reason=="quit" then "quit" else .event end
+        ')" in
+          "metadata-update")
+            set -x
+            kill -USR1 ${PARENT}
+            ;;
+          "shutdown"|"quit")
+            set -x
+            kill -USR2 ${PARENT}
+            ;;
+        esac
+      ) &
+      MPV_SOCKET=$!
+
+      (
+        trap 'echo "you killed mvi" >&2; exit' INT
+        if [ ! -z "$(jq -n 'until(.event=="shutdown" or .reason=="quit"; input)' <&4)" ]; then
+          kill -QUIT ${PARENT}
+        fi
+      ) &
+      MVI_SOCKET=$!
+
+      set +e
+      while [ -z "${EVENT}" ]; do
+        wait
+      done
+
+      /bin/kill -KILL -${MPV_SOCKET} -${MVI_SOCKET}
+
+      case "${EVENT}" in
+        "metadata-update")
+          #kill -INT -${MVI_SOCKET}
+          # don't wait, this needs to be fast
+          ;;
+        "mpv-die")
+          #kill -INT -${MVI_SOCKET}
+
+          # if mpv (not mvi) closes (and we weren't explicitly told to
+          # close), wait a bit and check for a new one (with neither mvi
+          # nor the old mpv's pid) in case a singleton mpv was just
+          # replaced by another
+          MPV_PID="$(racy 0.25 5 'pgrep -u ${UID} mpv | grep -Fxv "${ALL_MPVS}" | grep .')" || exit
+          break
+          ;;
+        "mvi-die")
+          #kill -TERM -${MPV_SOCKET}
+
+          exit
+          ;;
+      esac
     done
-
-    # if our mpv closes (and we weren't explicitly told to close), wait a
-    # little bit and check for a new one in case it was closed by starting
-    # another singleton-wrapped (i.e. play) mpv
-    if [ ! -z "${INTERRUPT+x}" ]; then
-      racy 0.1 10 'pgrep -u "${UID}" mpv | grep -Fxv "$$" | grep -q .' || break
-
-      # still racy, so give a little extra delay as a treat (like salami)
-      sleep 0.5
-    fi
   done
-)
+) &
+
+exec mvi --force-window --idle=yes --no-input-terminal --input-ipc-server="${IPC_SOCKET}" #--msg-level=all=trace
