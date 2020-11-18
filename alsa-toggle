@@ -1,5 +1,5 @@
 #!/bin/sh
-# alsa-toggle: toggle between ALSA control enum variants
+# alsa-toggle: cycle between ALSA control enum variants
 set -euo pipefail
 
 if [ "$#" == "0" ]; then
