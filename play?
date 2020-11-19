@@ -2,23 +2,41 @@
 # play?: print metadata for what mpv is playing
 set -euo pipefail
 
-TMPFILE="$(mktemp -ut mpv-pid.XXXXX)"
-mkfifo "${TMPFILE}"
-trap 'rm -f "${TMPFILE}"' EXIT
-jq -cn '{"command":["run", "bash", "-c", "echo $PPID > " + $ARGS.positional[0]]}' --args "${TMPFILE}" | \
-nc -Uw 1 ~/.config/mpv/socket | head -n1 >/dev/null
-MPV_PID="$(cat "${TMPFILE}")"
-rm -f "${TMPFILE}"
+MPV_PID="${MPV_PID-$(
+  for p in $(pgrep -u ${UID} mpv); do
+    find /proc/${p}/task/${p}/fd -type l -exec readlink '{}' + | \
+    grep -Fxq "$(
+      grep ~/.config/mpv/socket /proc/net/unix | cut -d' ' -f7 | \
+      sed 's/^\(.*\)$/socket:[\1]/'
+    )" && printf '%s\n' "${p}" || :
+  done
+)}"
+
+# TODO: reinstate this (currently broken) check
+#if printf "%s" "${MPV_PID}" | grep -q $'\n'; then
+#  printf "error: multiple mpv's seem to have the socket open:\n%s\n" "${MPV_PID}"
+#  exit 1
+#fi
+MPV_PID="$(printf '%s' "${MPV_PID}" | head -n1)"
 
 if [ ! -z "${MPV_PID}" ]; then
   cd /proc/${MPV_PID}/cwd
 fi
 
-MEDIA_PATH="$(printf '{ "command": ["get_property", "path"] }\n' | nc -Uw 1 ~/.config/mpv/socket | head -n1 | jq -r '.data')"
+MEDIA_PATH="$(
+  printf '{ "command": ["get_property", "path"] }\n' | nc -Uw 1 ~/.config/mpv/socket | \
+  (
+    head -n1 | jq -r '.data'
+    dd iflag=nonblock status=none &>/dev/null &
+  )
+)"
 if [ -e "${MEDIA_PATH}" ]; then
   MEDIA_PATH="$(realpath -s "${MEDIA_PATH}")"
 fi
 printf "Path: %s\n" "${MEDIA_PATH}"
 
 printf '{ "command": ["get_property", "filtered-metadata"] }\n' | nc -Uw 1 ~/.config/mpv/socket | \
-head -n1 | jq -r '.data | keys_unsorted[] as $k | "\($k): \(.[$k])"'
+(
+  head -n1 | jq -r '.data | keys_unsorted[] as $k | "\($k): \(.[$k])"'
+  dd iflag=nonblock status=none &>/dev/null &
+)
