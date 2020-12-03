@@ -40,7 +40,7 @@ sleep_to_date() {
     if printf "%s" "$1" | grep -vq 'PM$'; then
       PM="$(date -d "$1 PM" +%s 2>/dev/null)"
       if (( ${PM} > ${CURRENT_TIME} )); then
-        TARGET_TIME="$(PM)"
+        TARGET_TIME="${PM}"
       fi
     fi
   fi
