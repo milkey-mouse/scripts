@@ -3,7 +3,7 @@
 # TODO: better documentation
 help() {
     printf "needledrop: needledrop [--format FORMAT] [--channels CHANNELS] [--rate RATE]\n" >&2
-    printf "                       [--mpv] [--aplay] [--quiet] [--help] [OUTFILE]\n" >&2
+    printf "                       [--device DEV] [--mpv] [--aplay] [--quiet] [--help] [OUTFILE]\n" >&2
 }
 
 # TODO: error handling
@@ -11,6 +11,7 @@ FORMAT=S16_LE
 CHANNELS=2
 RATE=48000
 FRAMESIZE=4
+DEVICE="default:CARD=CODEC"
 PLAYER=none
 
 if command -v mpv >/dev/null; then
@@ -34,6 +35,10 @@ while :; do
     -r|--rate)
         shift
         RATE=$1
+        ;;
+    -d|--device)
+        shift
+        DEVICE=$1
         ;;
     --mpv)
         PLAYER=mpv
@@ -70,7 +75,7 @@ FFMPEG_FORMAT="-f ${FORMAT_LOWER} -ac ${CHANNELS} -ar ${RATE}"
 
 record() {
     # this wacky FD redirection dance swaps stdout/err & back again so we can grep stderr
-    while stdbuf -o0 -e0 arecord -D default:CARD=CODEC ${APLAY_FORMAT} 3>&1 1>&2 2>&3 3>&- | \
+    while stdbuf -o0 -e0 arecord -D "${DEVICE}" ${APLAY_FORMAT} 3>&1 1>&2 2>&3 3>&- | \
     grep -Fm 1 'No such device'; do :; done 3>&1 1>&2 2>&3 3>&-
 }
 
@@ -91,7 +96,7 @@ play() {
             stdbuf -i0 -o0 aplay ${APLAY_FORMAT} "$1"
             ;;
         none)
-            while sleep 3600; do :; done
+            sleep infinity
             ;;
     esac
 }
