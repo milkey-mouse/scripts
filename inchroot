@@ -1,0 +1,44 @@
+#!/bin/sh
+set -euxo pipefail
+
+echo "this script is unfinished"
+exit 1
+
+echo start
+
+BLOCKSIZE=512
+
+if cut -d' ' -f1 /proc/mounts | grep -Fxq /dev/mapper/root; then
+  # create a self-contained tmpfs to run the script in
+  # (so we can suspend root without hanging the script)
+  # NOTE: don't mount /tmp with noexec or this doesn't work
+  if [ -z "${IN_CHROOT+x}" ]; then
+    TMPDIR="$(mktemp -d)"
+    trap 'umount-recursive "${TMPDIR}" 2>/dev/null || :; rm -r "${TMPDIR}"' EXIT
+
+    mkdir "${TMPDIR}"/{bin,proc,sys,dev}
+    for CMD in badblocks busybox create-snapshot cryptsetup deintegrify dd dmsetup e2fsck merge-snapshot inchroot; do
+      cp "$(command -v "${CMD}.static" || command -v "${CMD}")" "${TMPDIR}/bin/${CMD}"
+    done
+    ln -s /bin/busybox "${TMPDIR}/bin/sh"
+
+    mount --types proc /proc "${TMPDIR}/proc"
+    mount --rbind /sys "${TMPDIR}/sys"
+    mount --make-rslave "${TMPDIR}/sys"
+    mount --rbind /dev "${TMPDIR}/dev"
+    mount --make-rslave "${TMPDIR}/dev"
+
+    IN_CHROOT=true busybox chroot "${TMPDIR}" /bin/inchroot "$@"
+    exit
+  else
+    export PATH=/bin
+
+    alias dmsetup="dmsetup --noudevrules --noudevsync"
+  fi
+fi
+
+sync && sleep 1  # pure paranoia
+
+echo hello
+
+cryptsetup --disable-locks refresh --persistent --integrity-no-journal root

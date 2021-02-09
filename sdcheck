@@ -1,0 +1,49 @@
+#!/bin/sh
+set -euxo pipefail
+
+echo unfinished
+exit 1
+
+HASHER=sha1sum
+#HASHER=b2sum
+
+hashchunks() {
+  #if [ -t 2 ]; then dd status=progress || cat; else cat; fi | \
+  while head -c 1G | grep -a . | "${HASHER}" -b -; do :; done | \
+  stdbuf -i0 -o0 cut -d' ' -f1 #| stdbuf -i0 -o0 nl -v0 -w1 -s'G ' -nln
+}
+
+DISK="$1"
+touch "${DISK}"  # check permissions
+
+printf 'filling disk %s\n' "${DISK}" >&2
+#HASHES="$(
+set -- $(
+  i=0
+  (while openssl rand 2147483647; do :; done || cat /dev/urandom) | \
+  tee --output-error=exit "${DISK}" 2>/dev/null | hashchunks | \
+  while IFS= read -r LINE; do
+    printf '\r\033[K%sG-%sG %s\n' "$i" "$((i+1))" "${LINE}" >&2
+    printf '%s\n' "${LINE}"
+    i=$((i+1))
+  done
+)
+
+echo "$#" "$@"
+
+if [ $# == 1 ]; then
+  exit 1
+fi
+
+FAIL=0
+printf 'verifying disk contents\n' >&2
+hashchunks <"${DISK}" | while IFS= read -r LINE; do
+  if [ "${LINE}" != "$1" ]; then
+    printf "chunk hashes differ:\nwritten: %s\nread: %s" "$1" "${LINE}" >&2
+    FAIL=1
+  else
+    shift
+  fi
+done
+
+exit ${FAIL}
