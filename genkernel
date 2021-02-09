@@ -182,8 +182,8 @@ dir /proc 0555 0 0
 dir /sys 0555 0 0
 dir /tmp 1777 0 0
 # reintegrify
-file /bin/create-snapshot /usr/local/bin/create-snapshot 0755 0 0
-file /bin/deintegrify /usr/local/bin/deintegrify 0755 0 0
+file /bin/create-snapshot $(which create-snapshot) 0755 0 0
+file /bin/deintegrify $(which deintegrify) 0755 0 0
 file /bin/e2fsck /sbin/e2fsck.static 0755 0 0
 # GNU dd needed for O_DIRECT
 file /bin/dd /bin/dd.static 0755 0 0
