@@ -11,6 +11,13 @@ SIGNAL="-SIGTERM"
 if [ "$(basename "$0")" != "singleton" ]; then
   # find best version of this program in $PATH which isn't this one
   PROGRAM="$(which -a "$(basename "$0")" | grep -Fvx "$(realpath -s "$0")" | head -n1)"
+  if [ "$1" == "--no-singleton" ]; then
+    shift
+    if [ "$1" == "--" ]; then
+      shift
+    fi
+    exec "${PROGRAM:-:}" "$@"
+  fi
 else
   while :; do
       case $1 in
@@ -19,6 +26,10 @@ else
           ;;
       -SIG*)
           SIGNAL="$1"
+          ;;
+      "--")
+          shift
+          break
           ;;
       *)
           break
