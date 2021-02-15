@@ -9,10 +9,6 @@ rrsync
 git-identity
 grim
 slurp
-ecp*
-ice*
-yosys*
-nextpnr*
 nocache
 polyphone
 record.sh
