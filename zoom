@@ -10,6 +10,6 @@ PORTAL2=$!
 #PULSEAUDIO=$!
 
 #exec flatpak run us.zoom.Zoom
-flatpak run us.zoom.Zoom
+flatpak run us.zoom.Zoom "$@"
 
 kill -s INT "${PORTAL1}" "${PORTAL2}" #"${PULSEAUDIO}"
