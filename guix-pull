@@ -1,0 +1,78 @@
+#!/bin/sh
+set -exuo pipefail
+
+GUIX_REPO_LOCATION="${GUIX_REPO_LOCATION:-${HOME}/git/guix}"
+EXTRA_AUTHORIZATIONS="${EXTRA_AUTHORIZATIONS:-${HOME}/git/mguix/.guix-authorizations}"
+
+cd "${GUIX_REPO_LOCATION}"
+
+git -C "${GUIX_REPO_LOCATION}" fetch upstream
+
+TMPDIR="$(mktemp -d)"
+git -C "${GUIX_REPO_LOCATION}" worktree add "${TMPDIR}" keyring
+
+git -C "${TMPDIR}" rebase upstream/keyring --no-gpg-sign
+
+git -C "${TMPDIR}" checkout upstream/master
+
+if ! guix git authenticate --historical-authorizations="${EXTRA_AUTHORIZATIONS}" --repository="${TMPDIR}" --cache-key=guix-git \
+  $(guix describe --format=json | jq -r '.[] | select(.name == "guix").introduction | "\(.commit) \(.signer | gsub(" "; ""))"')
+then
+  printf 'AUTHORIZATION FAILED!\n'
+  exit 1
+fi
+
+git -C "${GUIX_REPO_LOCATION}" worktree remove "${TMPDIR}"
+
+# TODO: this is a hack so update-guix-package doesn't make merge conflicts
+git -C "${GUIX_REPO_LOCATION}" restore gnu/packages/package-management.scm
+
+if [ "$(git -C "${GUIX_REPO_LOCATION}" status -s | wc -c)" != "1" ] \
+   && LANG=C LC_ALL=C git -C "${GUIX_REPO_LOCATION}" stash save | grep -Fxv 'No local changes to save'; then
+  STASHED=1
+else
+  STASHED=0
+fi
+
+git -C "${GUIX_REPO_LOCATION}" rebase upstream/master
+
+WIP_HEAD="$(git -C "${GUIX_REPO_LOCATION}" rev-parse HEAD)"
+if [ "${STASHED}" == "1" ] && [ "$(git -C "${GUIX_REPO_LOCATION}" stash list | wc -l)" != "0" ]; then
+  WIP_HEAD="$(git -C "${GUIX_REPO_LOCATION}" rev-parse stash@{0})"
+  git -C "${GUIX_REPO_LOCATION}" stash pop
+fi
+
+GUIX_CONTAINER="guix environment --pure --container --link-profile guix" # --with-debug-info=libgit2 --with-debug-info=guile-git" # TODO
+
+if [ ! -f "${GUIX_REPO_LOCATION}/Makefile" ]; then
+  ${GUIX_CONTAINER} -- ./bootstrap
+  ${GUIX_CONTAINER} -- ./configure --localstatedir=/var --prefix="${HOME}/.local"
+  ${GUIX_CONTAINER} -- make clean
+fi
+
+if ! ${GUIX_CONTAINER} -- make -j"$(nproc)"; then
+  ${GUIX_CONTAINER} -- make clean
+  ${GUIX_CONTAINER} -- make -j"$(nproc)"
+fi
+
+#${GUIX_CONTAINER} -- make check
+
+#guix environment --pure guix -- make install
+${GUIX_CONTAINER} --ad-hoc coreutils git --share=/var/guix/daemon-socket/socket -- env \
+    GUILE_AUTO_COMPILE=0 GUIX_ALLOW_ME_TO_USE_PRIVATE_COMMIT=true \
+    ./pre-inst-env guile build-aux/update-guix-package.scm "${WIP_HEAD}"
+#${GUIX_CONTAINER} --ad-hoc coreutils git --share=/var/guix/daemon-socket/socket -- env \
+#    GUILE_AUTO_COMPILE=0 GUIX_ALLOW_ME_TO_USE_PRIVATE_COMMIT=true \
+#    make update-NEWS
+
+guix environment --pure guix -- ./pre-inst-env guix install guix
+
+# upgrade root as well for guix-daemon's sake
+sudo guix environment --pure guix -- ./pre-inst-env guix install guix
+#sudo rc-service guix-daemon restart
+sudo killall -SIGINT guix-daemon || :
+sudo rc-service guix-daemon zap
+sudo rc-service guix-daemon start
+
+git -C "${GUIX_REPO_LOCATION}" worktree prune
+rm "${GUIX_REPO_LOCATION}/"*-checkout
