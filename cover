@@ -2,6 +2,7 @@
 set -euo pipefail
 
 # TODO: emulate other mvi features like zooming and panning around the cover
+# TODO: don't unpause if player is paused when cover is invoked
 
 show_covers() {
   cat <<EOF
