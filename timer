@@ -37,7 +37,7 @@ sleep_to_date() {
   if (( ${TARGET_TIME} < ${CURRENT_TIME} )); then
     # don't set a timer in the past!
     # the cause is likely a 12-hour format being parsed as 24.
-    if printf "%s" "$1" | grep -vq 'PM$'; then
+    if printf "%s" "$1" | grep -vqi 'PM$'; then
       PM="$(date -d "$1 PM" +%s 2>/dev/null)"
       if (( ${PM} > ${CURRENT_TIME} )); then
         TARGET_TIME="${PM}"
