@@ -1,0 +1,4 @@
+#!/bin/sh
+# shuffle: shuffle mpv's playlist in-place
+
+echo 'playlist-shuffle' | nc -Uw 0 ~/.config/mpv/socket
