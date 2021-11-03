@@ -1,0 +1,12 @@
+#!/bin/sh
+set -euo pipefail
+
+mdadm --assemble --scan || :
+cryptsetup open /dev/disk/by-uuid/1800126e-1ff5-4906-9dfa-30eadd09ea05 raid0
+mount /dev/mapper/raid0 /raid0
+
+integritysetup open /dev/disk/by-partuuid/74635cc0-7862-45bb-9578-5ab193cece5e disk0-raid1-integ --integrity-no-journal --integrity hmac-sha256 --integrity-key-file /root/integrity-keyfile --integrity-key-size 64
+integritysetup open /dev/disk/by-partuuid/bdc6dfa6-c951-46c3-9b0e-b629019a2a15 disk1-raid1-integ --integrity-no-journal --integrity hmac-sha256 --integrity-key-file /root/integrity-keyfile --integrity-key-size 64
+mdadm --assemble --scan
+cryptsetup open /dev/disk/by-uuid/890215b0-7352-4972-b563-4cea6082fce6 raid1
+mount /dev/mapper/raid1 /raid1

@@ -1,0 +1,29 @@
+#!/bin/sh
+set -euo pipefail
+
+#umount /mnt
+#cryptsetup close spinning_rust
+#
+#dmsetup remove vg-origin
+#dmsetup remove vg-origin_corig
+#dmsetup remove vg-cache_cdata
+#dmsetup remove vg-cache_cmeta
+#
+#cryptsetup close cache0
+#
+#mdadm --stop /dev/md0
+#
+#cryptsetup close raid0
+#cryptsetup close raid1
+
+umount /raid1
+cryptsetup close raid1
+mdadm --stop /dev/disk/by-uuid/890215b0-7352-4972-b563-4cea6082fce6
+integritysetup close disk1-raid1-integ
+integritysetup close disk0-raid1-integ
+
+umount /raid0
+cryptsetup close raid0
+mdadm --stop /dev/disk/by-uuid/1800126e-1ff5-4906-9dfa-30eadd09ea05
+
+sync  # paranoia
