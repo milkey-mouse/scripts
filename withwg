@@ -1,0 +1,18 @@
+#!/bin/sh
+set -euo pipefail
+
+# TODO: add veth for 0.0.0.0 binds accessed from host
+# (assign it the same IP addresses as wireguard on the host, random ones on guest side)
+
+if ! ip netns | grep -q ^wireguard; then
+  ip netns add wireguard
+  ip link add wg0 type wireguard
+  wg setconf wg0 /etc/wireguard/wg0.conf
+  ip link set wg0 netns wireguard
+  ip -n wireguard addr add 192.168.42.2/32 dev wg0
+  ip -n wireguard link set wg0 up
+  ip -n wireguard route add default dev wg0
+  ip -n wireguard link set lo up
+fi
+
+exec ip netns exec wireguard "$@"
