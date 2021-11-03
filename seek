@@ -19,7 +19,7 @@ if [ "$#" == 0 ]; then
 elif printf "%s" "$1" | grep -q '^[1-9][0-9]*$'; then
   # TODO: check against playlist count and don't set past end of the playlist
   printf '{ "command": ["set_property", "playlist-pos-1", %s] }\n' "$1" | \
-  nc -Uw 1 ~/.config/mpv/socket | head -n1 > /dev/null
+  nc -Uw 1 ~/.config/mpv/socket | head -n1 >/dev/null
   exit
 else
   FZF_OPTS="--filter"
@@ -32,7 +32,7 @@ fi
 # sorting matches by album order
 if (
   printf '{ "command": ["get_property", "playlist-count"] }\n' | \
-  nc -Uw 1 ~/.config/mpv/socket | head -n1 | jq -er '.data > 30' > /dev/null
+  nc -Uw 1 ~/.config/mpv/socket | head -n1 | jq -er '.data > 30' >/dev/null
 ); then
   FZF_OPTS="--sort ${FZF_OPTS}"
 else

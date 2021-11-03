@@ -14,7 +14,7 @@ export FILTER="$(awk 'NR==FNR{a[$0];next} !($3 in a)' <(equery list @world) <(eq
 gendeps() {
   for pkg in "$@"; do
     mkdir -p "$(dirname "${ESIMPLIFY_TMPDIR}/${pkg}")"
-    equery -Cq depgraph -MU --depth=0 "${pkg}" | tail -n+4 | cut -d] -f2- | tr -d ' ' | grep -Fx "${FILTER}" | sed "s#^#${pkg} #g" > "${ESIMPLIFY_TMPDIR}/${pkg}"
+    equery -Cq depgraph -MU --depth=0 "${pkg}" | tail -n+4 | cut -d] -f2- | tr -d ' ' | grep -Fx "${FILTER}" | sed "s#^#${pkg} #g" >"${ESIMPLIFY_TMPDIR}/${pkg}"
   done
 }
 export -f gendeps

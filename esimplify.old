@@ -6,7 +6,7 @@ MAXPKGS=$(echo "${1:-1}" | tr -cd '[[:digit:]]')
 
 WORLD="$(equery list @world)"
 INSTALLED="$(mktemp -t esimplify-installed.XXXX)"
-equery list @installed > "${INSTALLED}"
+equery list @installed >"${INSTALLED}"
 
 function cleanup {
   rm "${INSTALLED}"
@@ -14,6 +14,6 @@ function cleanup {
 trap cleanup EXIT
 
 awk 'NR==FNR{a[$0];next} !($3 in a)' - <(
-xargs -n1 -I{} echo "equery -Cq depgraph -MU --depth=0 {} | tail -n+4 | cut -d\\] -f2- | tr -d ' ' | grep -Fxf '${INSTALLED}' | xargs -n1 echo {}" <<< "${WORLD}" | parallel --lb --bar
+xargs -n1 -I{} echo "equery -Cq depgraph -MU --depth=0 {} | tail -n+4 | cut -d\\] -f2- | tr -d ' ' | grep -Fxf '${INSTALLED}' | xargs -n1 echo {}" <<<"${WORLD}" | parallel --lb --bar
 ) <<<"${WORLD}" |
 sort -k2 | uniq -cf1 | sort -n | awk '{ print $1=="1"?$2" needs "$3:$1" packages need "$3 }'

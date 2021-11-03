@@ -16,7 +16,7 @@ CMD="$(
 # run in background to make script slightly quicker
 ${CMD_PREFIX} ${CMD} &
 
-read -d '' AWK_INCREMENT_ROW << 'EOF'
+read -d '' AWK_INCREMENT_ROW <<'EOF'
 # Increments the first column of a row that matches $1.
 # Example: '13 man' becomes '14 man'
 BEGIN {
@@ -39,7 +39,7 @@ END {
 }
 EOF
 
-awk "${AWK_INCREMENT_ROW}" "$(cut -d' ' -f1 <<<"${CMD}")" "${RUN_HISTORY}" | sort -nr > "${RUN_HISTORY}.tmp"
+awk "${AWK_INCREMENT_ROW}" "$(cut -d' ' -f1 <<<"${CMD}")" "${RUN_HISTORY}" | sort -nr >"${RUN_HISTORY}.tmp"
 mv "${RUN_HISTORY}.tmp" "${RUN_HISTORY}"
 
 printf "\033]2;fzf_run\007"

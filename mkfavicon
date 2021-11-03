@@ -14,5 +14,5 @@ for SIZE in 16 32 64; do
     batik-rasterizer-1.9 -w ${SIZE} -h ${SIZE} -d "${TMPDIR}/favicon-${SIZE}.png" "$1"
 done
 
-icotool -c "${TMPDIR}"/favicon-*.png > "$2"
+icotool -c "${TMPDIR}"/favicon-*.png >"$2"
 

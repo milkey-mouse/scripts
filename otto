@@ -12,5 +12,5 @@ function best_ngram() {
 while IFS= read -d $'\0' PREFIX || [[ -n "${PREFIX}" ]]; do
     BEST="$(best_ngram "${PREFIX}")"
     echo "${BEST}"
-    printf '%s\0' "${BEST}" >> "${OTTO_HISTORY}"
+    printf '%s\0' "${BEST}" >>"${OTTO_HISTORY}"
 done

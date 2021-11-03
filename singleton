@@ -60,7 +60,7 @@ while [ -e "${PIDFILE}" ]; do
 done
 
 "${PROGRAM}" "$@" &
-printf "%s" "$!" > "${PIDFILE}"
+printf "%s" "$!" >"${PIDFILE}"
 
 function cleanup {
     rm -f "${PIDFILE}"

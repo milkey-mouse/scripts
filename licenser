@@ -110,4 +110,4 @@ fi
   [ -z "${YEAR}" ] && cat || sed "s/\[year\]/${YEAR}/"
 ) | (
   [ -z "${NAME}" ] && cat || sed "s/\[\(fullname\|name\)\]/${NAME}/g"
-) > "${FILENAME}"
+) >"${FILENAME}"

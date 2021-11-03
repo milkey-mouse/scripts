@@ -25,7 +25,7 @@ mime_types() {
             break
         fi
         #echo "spawning ${spawned}" >&2
-        nice file -00Li "${files[@]}" > "${TMPDIR}/${spawned}" &
+        nice file -00Li "${files[@]}" >"${TMPDIR}/${spawned}" &
         : $((spawned++))
         if (( ${spawned} > ${NPROC} )) && (( "$(jobs -p | wc -l)" >= ${NPROC} )); then
             # if we have spawned more processes than we have cores,
@@ -101,7 +101,7 @@ if [[ "${SELECTED}" == '.' ]]; then
     find_music | shuf -z
 else
     find_music -L "${SELECTED}" | ${SORT} -z
-fi | mime_types | gen_playlist > "${PLAYLIST}" &
+fi | mime_types | gen_playlist >"${PLAYLIST}" &
 
 # we really want this to be fast (inb4 then why is it written in sh‽), so even
 # though we could easily open a dummy mpv pointed at /dev/null to read its log

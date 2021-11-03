@@ -37,7 +37,7 @@ setup_config() {
         exit 1
     else
         printf "Copying config from running kernel\n"
-        gzip -cd /proc/config.gz > .config
+        gzip -cd /proc/config.gz >.config
 
         printf "Running make olddefconfig\n"
         if LANG="C" LC_ALL="C" make olddefconfig | stderr_tee | grep -q '^# No change to'; then
@@ -62,7 +62,7 @@ set_initramfs_location() {
 
 gen_init_cpio() {
     cd usr
-    make gen_init_cpio > /dev/null
+    make gen_init_cpio >/dev/null
     cd ..
 
     FILENAME="$1"; shift
@@ -74,7 +74,7 @@ build_initramfs() {
 
     INIT_LOCATION="$(mktemp)"
 
-    cat > "${INIT_LOCATION}" <<'EOF'
+    cat >"${INIT_LOCATION}" <<'EOF'
 #!/bin/sh
 
 panic() {
@@ -173,7 +173,7 @@ EOF
     }
     trap cleanup_init RETURN
 
-    gen_init_cpio - > "$1" <<EOF
+    gen_init_cpio - >"$1" <<EOF
 # base layout
 dir /bin 0755 0 0
 dir /dev 0755 0 0
@@ -241,7 +241,7 @@ set -u
 
 if [ ! -z "${NICENESS}" ]; then
     printf "Setting niceness to %s\n" "${NICENESS}"
-    renice "${NICENESS}" $$ > /dev/null
+    renice "${NICENESS}" $$ >/dev/null
 fi
 
 cd /usr/src/linux

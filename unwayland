@@ -13,8 +13,8 @@ unset EWOL_BACKEND
 if [ -z "${DISPLAY+x}" ]; then
     TMPFILE="$(mktemp -u)"
     mkfifo "${TMPFILE}"
-    swaymsg exec 'sleep 1 && printf %s "${DISPLAY}" > "'"${TMPFILE}"'"'
-    read -r DISPLAY < "${TMPFILE}"
+    swaymsg exec 'sleep 1 && printf %s "${DISPLAY}" >"'"${TMPFILE}"'"'
+    read -r DISPLAY <"${TMPFILE}"
     export DISPLAY
     rm "${TMPFILE}"
 fi
