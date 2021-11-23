@@ -4,7 +4,7 @@ set -euo pipefail
 MAKEOPTS="${MAKEOPTS:-$(portageq envvar MAKEOPTS)}"
 NICENESS="${NICENESS:-$(portageq envvar PORTAGE_NICENESS)}"
 
-ORIGINAL_MAKE="$(which make)"
+ORIGINAL_MAKE="$(command -v make)"
 make() {
     "${ORIGINAL_MAKE}" "$@" "${MAKEOPTS}"
 }
@@ -182,8 +182,8 @@ dir /proc 0555 0 0
 dir /sys 0555 0 0
 dir /tmp 1777 0 0
 # reintegrify
-file /bin/create-snapshot $(which create-snapshot) 0755 0 0
-file /bin/deintegrify $(which deintegrify) 0755 0 0
+file /bin/create-snapshot $(command -v create-snapshot) 0755 0 0
+file /bin/deintegrify $(command -v deintegrify) 0755 0 0
 file /bin/e2fsck $(guix build e2fsck-static)/sbin/e2fsck 0755 0 0
 # GNU dd needed for O_DIRECT
 file /bin/dd /bin/dd.static 0755 0 0
