@@ -7,7 +7,7 @@ set -euo pipefail
 show_covers() {
   cat <<EOF
 { "command": ["set_property", "pause", true] }
-{ "command": ["set_property", "audio-display", "attachment"] }
+{ "command": ["set_property", "audio-display", "embedded-first"] }
 { "command": ["set_property", "force-window", "yes"] }
 { "command": ["video-reload", 1] }
 { "command": ["set_property", "pause", false] }

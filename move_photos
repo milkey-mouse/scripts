@@ -1,0 +1,72 @@
+#!/bin/sh
+set -euo pipefail
+
+FOLDERS='{"photos": ["gapps/", ""], "raws": ["", "../"]}'
+TIMEOUT=86400
+
+HOSTNAME="$(hostname)"
+PORT=8384
+
+CONFIG_DIR="$HOME/.config/syncthing"
+API_KEY="$(grep -Po '(?<=apikey\>)[^<]+' "${CONFIG_DIR}/config.xml")"
+
+rest_query() {
+    # TODO: actually resolve hostname instead of --resolve host:port:127.0.0.1
+    # I think /etc/hosts prefers IPv6 for localhost on my machine or something
+    # because curl takes measurably longer when I don't give it --resolve...
+
+    QUERY_PATH="$1"; shift
+    while ! curl \
+        --no-progress-meter --resolve "${HOSTNAME}:${PORT}:127.0.0.1" \
+        "https://${HOSTNAME}:${PORT}/rest/${QUERY_PATH}" \
+        -H 'Host: localhost' -H "X-API-Key: ${API_KEY}" \
+        --cacert "${CONFIG_DIR}/https-cert.pem" "$@"; do sleep 1; done
+}
+
+get_events() {
+    # the file is an ugly hack to get around the while loop being in a subshell
+    SINCE="$(mktemp)"
+    SINCE2="$(mktemp)"
+    trap 'rm -rf "${SINCE}" "${SINCE2}"' EXIT
+    printf '0' > "${SINCE}"
+
+    FILTER="${1:-true}"; shift &>/dev/null || :
+    while :; do
+        rest_query events -G -d "since=$(cat "${SINCE}")" -d "timeout=${TIMEOUT}" \
+            | jq --unbuffered -ec "(.[] | select(${FILTER})), (last.id | stderr | empty)" "$@" \
+            2>"${SINCE2}" && cp "${SINCE2}" "${SINCE}"
+    done
+}
+
+FOLDER_PATHS="$(rest_query config/folders | jq 'map(select($folders[.id])) | map({key: .id, value: .path}) | from_entries' --argjson folders "${FOLDERS}")"
+
+get_events "$(tr -d '\n' <<'EOF'
+    .type == "ItemFinished"
+    and .data.action == "update"
+    and .data.error == null
+    and .data.type == "file"
+    and $folders[.data.folder]
+        and ($folders[.data.folder][0] as $prefix | .data.item | startswith($prefix))
+EOF
+)" --argjson folders "${FOLDERS}" | while IFS= read -r EVENT; do
+    # check for nul byte (could lead to e.g. copying on top of /etc/passwd)
+    # I'd do this in the jq query but contains("\u0000") seems to be broken
+    if [ "$(printf '%s' "${EVENT}" | jq -r '.data.item' | tr -dC '\0' | wc -c)" -ne 0 ]; then
+        printf 'refusing to process file path containing null byte %s\n' "$(printf '%s' "${EVENT}" | jq '.data.item')" >&2
+    else
+        FOLDER="$(printf '%s' "${EVENT}" | jq .data.folder)"
+        FOLDER_PATH="$(printf '%s' "${FOLDER}" | jq -r '$paths[.]' --argjson paths "${FOLDER_PATHS}")"
+        OLD_PREFIX="$(printf '%s' "${FOLDER}" | jq -r '$folders[.][0]' --argjson folders "${FOLDERS}")"
+        NEW_PREFIX="$(printf '%s' "${FOLDER}" | jq -r '$folders[.][1]' --argjson folders "${FOLDERS}")"
+
+        OLD_FILE="$(printf '%s' "${EVENT}" | jq -r '.data.item')"
+        NEW_FILE="${NEW_PREFIX}${OLD_FILE##${OLD_PREFIX}}"
+
+        if [ -f "${FOLDER_PATH}/${OLD_FILE}" ]; then
+            mkdir -vp "${FOLDER_PATH}/${NEW_FILE%/*}"
+            mv -vn "${FOLDER_PATH}/${OLD_FILE}" "${FOLDER_PATH}/${NEW_FILE}"
+        else
+            printf 'already moved %s\n' "${OLD_FILE}" >&2
+        fi
+    fi
+done

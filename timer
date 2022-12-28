@@ -20,6 +20,16 @@ elif [ "$1" == "cancel" ]; then
         cut -d' ' -f1 | xargs -r kill
     exit
   fi
+#elif [ "$1" == "postpone" ]; then
+#  if [ "$#" != "3" ]; then
+#    printf 'usage: timer postpone <ID> <DURATION>\n' >&2
+#    exit 1
+#  else
+#    # TODO
+#    list_timers | grep -v "^[0-9]* timer postpone" | grep "$2" | \
+#        cut -d' ' -f1
+#    exit
+#  fi
 elif [ "$1" != "--bg" ]; then
   swaymsg exec -- "$0" --bg "$@" && exit
 else

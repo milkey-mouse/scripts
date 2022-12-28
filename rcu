@@ -4,4 +4,4 @@ cd ~/git/rcu
 source venv/bin/activate
 
 cd rcu/src
-exec python main.py --autoconnect
+exec python main.py --autoconnect "$@"

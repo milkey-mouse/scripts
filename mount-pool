@@ -1,9 +1,27 @@
 #!/bin/sh
 set -euo pipefail
 
+#integritysetup open /dev/disk/by-id/wwn-0x5000cca252c691bb raid0 --integrity-no-journal --integrity hmac-sha256 --integrity-key-file /root/integrity-keyfile --integrity-key-size 64
+#integritysetup open /dev/disk/by-id/wwn-0x5000cca252c7080f raid1 --integrity-no-journal --integrity hmac-sha256 --integrity-key-file /root/integrity-keyfile --integrity-key-size 64
+## TODO: use SSD RAID instead of single SSD
+#integritysetup open /dev/disk/by-id/nvme-XPG_GAMMIX_S11_Pro_2K3129AQ9CJY cache0 --integrity-no-journal --integrity hmac-sha256 --integrity-key-file /root/integrity-keyfile --integrity-key-size 64 --allow-discards
+##integritysetup open /dev/disk/by-id/nvme-XPG_GAMMIX_S11_Pro_OTHER cache1 --integrity-no-journal --integrity hmac-sha256 --integrity-key-file /root/integrity-keyfile --integrity-key-size 64
+#
+#mdadm --assemble --scan || :  # NOTE: should auto-detect RAID stuff on properly configured kernel
+#
+#vgchange -a y                 # NOTE: should auto-detect LVM stuff on properly configured kernel
+#
+#cryptsetup open /dev/vg/origin spinning_rust
+#mount /dev/mapper/spinning_rust /mnt
+
 mdadm --assemble --scan || :
 cryptsetup open /dev/disk/by-uuid/1800126e-1ff5-4906-9dfa-30eadd09ea05 raid0
+
+echo "TODO: BAD: deintegrifying raid0"
+deintegrify raid0  # TODO
+
 mount /dev/mapper/raid0 /raid0
+
 
 integritysetup open /dev/disk/by-partuuid/74635cc0-7862-45bb-9578-5ab193cece5e disk0-raid1-integ --integrity-no-journal --integrity hmac-sha256 --integrity-key-file /root/integrity-keyfile --integrity-key-size 64
 integritysetup open /dev/disk/by-partuuid/bdc6dfa6-c951-46c3-9b0e-b629019a2a15 disk1-raid1-integ --integrity-no-journal --integrity hmac-sha256 --integrity-key-file /root/integrity-keyfile --integrity-key-size 64
