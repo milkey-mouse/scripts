@@ -11,7 +11,7 @@ eject -t || :
 # wait for disc to become readable (i.e. spin up)
 while (LC=C head -c1 /dev/sr0 || :) 2>&1 | grep -Fq 'No medium found'; do sleep 1; done
 
-cdparanoia -B
+cdparanoia -B "$@"
 find . -type f -name '*.wav' -print0 | xargs -0n1 -P"$(nproc)" sh -c 'ffmpeg -y -i "$1" '"${FFMPEG_ARGS}"' "$(printf "%s\n" "$1" | sed "s/\.cdda\.wav$/.'"${FORMAT}"'/")" && rm $1' sh
 
 if pgrep -u "${USER}" picard; then
