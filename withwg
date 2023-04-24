@@ -4,7 +4,7 @@ set -euo pipefail
 # TODO: add veth for 0.0.0.0 binds accessed from host
 # (assign it the same IP addresses as wireguard on the host, random ones on guest side)
 
-if ! ip netns | grep -q ^wireguard; then
+if ! ip netns 2>/dev/null | grep -q ^wireguard; then
   ip netns add wireguard
   ip link add wg0 type wireguard
   wg setconf wg0 /etc/wireguard/wg0.conf
