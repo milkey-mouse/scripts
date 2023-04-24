@@ -1,0 +1,6 @@
+#!/bin/sh
+set -euo pipefail
+
+# find best version of mpv in $PATH which isn't this one
+MPV="$(which -a "$(basename "$0")" | grep -Fvx "$(realpath -s "$0")" | head -n1)"
+exec "${MPV}" --ao=alsa "$@"
