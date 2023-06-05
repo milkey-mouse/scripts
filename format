@@ -1,0 +1,158 @@
+#!/bin/sh
+set -euxo pipefail
+
+# Creates a RAID10 across two partitions of two NVME drives:
+#
+#     nvme0n1p3 -- dm-integrity --+
+#                                 +-- dm-crypt -- xfs
+#     nvme1n1p3 -- dm-integrity --+
+#
+# You'll probably want to change the hardcoded nvme*n1p3 partition paths.
+
+# This script intentionally doesn't have the execute bit set, as it's
+# rather dangerous. To run it, pass it as an argument to sh manually.
+
+# fio test results on 2xNVME RAID10:
+
+# CHUNK_SIZE=4K
+# 198 MiB/s 4k
+# 307 MiB/s 64k
+
+# CHUNK_SIZE=32K
+# 210 MiB/s 4k
+# 377 MiB/s 64k
+
+# CHUNK_SIZE=64K
+# 234 MiB/s 4k
+# 520 MiB/s 64k
+
+# CHUNK_SIZE=128K
+# 194 MiB/s 4k
+# 458 MiB/s 64k
+
+CHUNK_SIZE=64K
+SECTOR_SIZE=4096
+VOLUME_KEY_SIZE=64
+CRYPTSETUP_FORMAT_EXTRA_ARGS=""  # --uuid=<UUID>
+
+umask 077
+
+head -c${VOLUME_KEY_SIZE} /dev/urandom > /tmp/volume-keyfile
+
+modprobe nbd
+
+for i in 0 1; do
+    blkdiscard /dev/nvme${i}n1p3 -f
+
+    integritysetup format /dev/nvme${i}n1p3 \
+        --batch-mode \
+        --integrity hmac-sha256 \
+        --integrity-no-journal --journal-size=0 \
+        --integrity-key-file /tmp/volume-keyfile \
+        --integrity-key-size ${VOLUME_KEY_SIZE} \
+        --sector-size=${SECTOR_SIZE} \
+        --no-wipe
+
+    integritysetup open /dev/nvme${i}n1p3 disk${i} \
+        --integrity hmac-sha256 --integrity-no-journal \
+        --integrity-key-file /tmp/volume-keyfile \
+        --integrity-key-size ${VOLUME_KEY_SIZE}
+
+    qemu-img create \
+	-F raw -b /dev/mapper/disk${i} \
+	-f qcow2 /tmp/disk${i}.qcow2
+    qemu-img rebase \
+        -F raw -b /dev/zero -u \
+        -f qcow2 /tmp/disk${i}.qcow2
+
+    qemu-nbd --connect=/dev/nbd${i} --discard=ignore --image-opts \
+        driver=copy-on-read,file.driver=qcow2,file.file.driver=file,file.file.filename=/tmp/disk${i}.qcow2
+done
+
+mdadm --create /dev/md/root \
+    --level=raid10 --layout=f2 --chunk=${CHUNK_SIZE} \
+    --consistency-policy=resync --assume-clean \
+    --raid-devices=2 /dev/nbd0 /dev/nbd1
+
+cryptsetup luksFormat --type luks2 /dev/md/root \
+    --batch-mode \
+    --hash sha512 --cipher aes-xts-plain64 --key-size 512 \
+    --pbkdf argon2id --iter-time 10000 \
+    --pbkdf-parallel 4 --pbkdf-memory 4194304 \
+    --volume-key-file /tmp/volume-keyfile \
+    --sector-size ${SECTOR_SIZE} \
+    ${CRYPTSETUP_FORMAT_EXTRA_ARGS}
+
+cryptsetup open /dev/md/root root \
+    --volume-key-file /tmp/volume-keyfile \
+    --persistent --allow-discards \
+    --perf-no_read_workqueue --perf-no_write_workqueue \
+    --perf-submit_from_crypt_cpus --perf-same_cpu_crypt
+
+mkfs.xfs /dev/mapper/root \
+    -d su=${CHUNK_SIZE} -d sw=2 \
+    -s size=${SECTOR_SIZE} \
+    -m rmapbt=1 -K -L root
+
+xfs_repair /dev/mapper/root
+
+cryptsetup close root
+mdadm --stop /dev/md/root
+
+sync
+for i in 0 1; do
+    nbd-client -d /dev/nbd${i}
+    sync
+
+    qemu-img rebase \
+        -F raw -b /dev/mapper/disk${i} -u \
+        -f qcow2 /tmp/disk${i}.qcow2
+
+    qemu-img commit /tmp/disk${i}.qcow2
+    rm /tmp/disk${i}.qcow2
+    sync
+done
+
+# in case it started automatically when we reloaded /dev/mapper/disk*
+mdadm --stop "$(mdadm --detail --scan | grep -Fw "name=$(uname -n):root" | cut -d' ' -f2)" || :
+mdadm --assemble /dev/md/root /dev/mapper/disk0 /dev/mapper/disk1
+
+cryptsetup open /dev/md/root root \
+    --volume-key-file /tmp/volume-keyfile
+
+rm /tmp/volume-keyfile
+
+if LC_ALL=C mount | grep -Fq ' on /mnt '; then
+    umount -Rl /mnt
+fi
+
+mount /dev/mapper/root /mnt
+cd /mnt
+
+gpg --verify /tmp/stage3-*.tar.xz.asc /tmp/stage3-*.tar.xz
+tar xpf /tmp/stage3-*.tar.xz --xattrs-include=*.* --numeric-owner
+
+mount --types proc /proc proc
+mount --rbind /sys sys
+mount --make-rslave sys
+mount --rbind /dev dev
+mount --make-rslave dev
+
+mount --rbind /run run
+mount --make-slave run
+mount --rbind /tmp tmp
+mount --make-slave tmp
+
+cp -L /etc/resolv.conf etc/resolv.conf
+
+mkdir -p etc/portage/repos.conf
+cp usr/share/portage/config/repos.conf etc/portage/repos.conf/gentoo.conf
+echo "sync-openpgp-key-refresh = no  # TODO" >> etc/portage/repos.conf/gentoo.conf
+
+mkdir -p boot scratch
+mount /dev/md/boot boot
+mount /dev/md/scratch scratch
+
+if [ -d scratch/gentoo ]; then
+    cp -ar scratch/gentoo /var/db/repos
+fi
