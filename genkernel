@@ -2,7 +2,7 @@
 set -euo pipefail
 
 MAKEOPTS="${MAKEOPTS:-$(portageq envvar MAKEOPTS)}"
-NICENESS="${NICENESS:-$(portageq envvar PORTAGE_NICENESS)}"
+NICENESS="${NICENESS:-$(portageq envvar PORTAGE_NICENESS || :)}"
 
 ORIGINAL_MAKE="$(command -v make)"
 make() {
