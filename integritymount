@@ -1,0 +1,20 @@
+#!/bin/sh
+# Scan for dm-integrity partitions and mount them all with bogus keys.
+# TODO: enforce read-only access until keys are replaced with real ones.
+# TODO: don't hardcode --integrity hmac-sha256, but keep it as the default.
+set -euo pipefail
+
+DISK_NUMBER=0
+ls /sys/block | while IFS= read -r DISK; do
+    for PARTITION in "/dev/${DISK}"*; do
+        if integritysetup open "${PARTITION}" "integrity${DISK_NUMBER}" "$@"
+            --integrity hmac-sha256 --integrity-no-journal \
+            --integrity-key-file /dev/zero --integrity-key-size 64 \
+            --integrity-recovery-mode \
+            2>&1 | grep -vx 'Device .* is not a valid INTEGRITY device.' >&2
+        then
+            printf "Opened %s as /dev/mapper/integrity-%s\n" "${DISK}" "${DISK_NUMBER}"
+            DISK_NUMBER=$((DISK_NUMBER+1))
+        fi
+    done
+done
