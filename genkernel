@@ -110,6 +110,24 @@ if [ "$?" -ne "0" ] || [ -z "${CRYPT_ROOT}" ]; then
   exit 1
 fi
 
+INTEGRITY_COUNT=0
+for DISK in /sys/block/*; do
+  for PARTITION in "/dev/${DISK#/sys/block/}"*; do
+    if integritysetup open "${PARTITION}" "integrity${INTEGRITY_COUNT}" \
+      --integrity hmac-sha256 --integrity-no-journal \
+      --integrity-key-file /dev/zero --integrity-key-size 64 \
+      --allow-discards --integrity-recovery-mode \
+      2>&1 | (grep -vx 'Device .* is not a valid INTEGRITY device.' || :) >&2
+    then
+      printf "Opened %s as /dev/mapper/integrity%s.\n" \
+        "${PARTITION}" "${INTEGRITY_COUNT}"
+      INTEGRITY_COUNT=$((INTEGRITY_COUNT+1))
+    fi
+  done
+done
+
+mdadm --assemble --scan || :
+
 for _ in $(seq 20); do
   if findfs "${CRYPT_ROOT}" 2>&1 >/dev/null; then
     break
@@ -130,20 +148,57 @@ if ! cryptsetup isLuks "${CRYPT_ROOT_PATH}"; then
   exit 1
 fi
 
-while ! cryptsetup luksOpen "${CRYPT_ROOT_PATH}" root; do
+while ! cryptsetup luksDump "${CRYPT_ROOT_PATH}" \
+  --dump-volume-key --volume-key-file /tmp/volume-key \
+  --batch-mode >/dev/null
+do
+  printf "Could not dump ${CRYPT_ROOT_PATH} volume key. Trying again...\n"
+done
+
+while ! cryptsetup luksOpen "${CRYPT_ROOT_PATH}" root \
+  --volume-key-file /tmp/volume-key --allow-discards
+do
   printf "Could not open ${CRYPT_ROOT_PATH}. Trying again...\n"
 done
 printf "Opened ${CRYPT_ROOT_PATH} as /dev/mapper/root.\n"
 
-if ! e2fsck -C0 /dev/mapper/root || ! mount /dev/mapper/root /mnt; then
+if [ "${INTEGRITY_COUNT}" -ne 0 ]; then
+  VOLUME_KEY_FORMAT="$(wc -c </tmp/volume-key)/1 \"%02x\""
+  VOLUME_KEY="$(hexdump -e "${VOLUME_KEY_FORMAT}" /tmp/volume-key)"
+
+  for INTEGRITY in /dev/mapper/integrity*; do
+    # keep only in-use dm-integrity devices
+    if ! integritysetup close "${INTEGRITY}" 2>/dev/null; then
+      dmsetup table "${INTEGRITY}" \
+        | awk '{$7="D";print}' \
+        | sed "s/0\{128\}/${VOLUME_KEY}/" \
+        | dmsetup reload "${INTEGRITY}"
+      dmsetup suspend "${INTEGRITY}"
+      dmsetup resume "${INTEGRITY}"
+    fi
+  done
+fi
+
+rm /tmp/volume-key
+
+if ! mount /dev/mapper/root /mnt; then
   if dmesg | grep -q 'INTEGRITY AEAD ERROR'; then
     printf "!!!!!!!!!!! AEAD integrity data failed to validate. Someone may have tampered\n"
     printf "! WARNING ! with your disk, or the system may have shut down abruptly.\n"
     printf "!!!!!!!!!!! Trust current disk contents and recompute integrity checksums? [y/N]: "
     if head -n1 | grep -Fixq -e y -e yes; then
-      deintegrify root
-      if ! e2fsck -C0 /dev/mapper/root; then
-        printf 'e2fsck failed; press Enter to continue'
+      for INTEGRITY in /dev/mapper/integrity*; do
+        # keep only in-use dm-integrity devices
+        if ! integritysetup close "${INTEGRITY}" 2>/dev/null; then
+          dmsetup table "${INTEGRITY}" \
+            | awk '{$7="R";print}' \
+            | dmsetup reload "${INTEGRITY}"
+          dmsetup suspend "${INTEGRITY}"
+          dmsetup resume "${INTEGRITY}"
+        fi
+      done
+      if ! xfs_repair /dev/mapper/root; then
+        printf 'xfs_repair failed; press Enter to continue'
         read
       fi
       create-snapshot root
@@ -161,7 +216,7 @@ umount /sys
 #umount /dev
 
 printf "Switching to new root...\n"
-exec switch_root /mnt /sbin/init
+exec switch_root -c /dev/tty1 /mnt /sbin/init
 EOF
 
     OLD_TRAPS="$(trap)"
@@ -181,15 +236,14 @@ dir /mnt 0755 0 0
 dir /proc 0555 0 0
 dir /sys 0555 0 0
 dir /tmp 1777 0 0
-# reintegrify
-file /bin/create-snapshot $(command -v create-snapshot) 0755 0 0
-file /bin/deintegrify $(command -v deintegrify) 0755 0 0
-file /bin/e2fsck $(guix build e2fsck-static)/sbin/e2fsck 0755 0 0
-# cryptsetup
-file /bin/cryptsetup /sbin/cryptsetup 0755 0 0
-file /bin/dmsetup /sbin/dmsetup.static 0755 0 0
+file /bin/xfs_repair $(command -v xfs_repair.static) 0755 0 0
+# device-mapper stuff
+file /bin/cryptsetup $(command -v cryptsetup.static) 0755 0 0
+file /bin/integritysetup $(command -v integritysetup.static) 0755 0 0
+file /bin/dmsetup $(command -v dmsetup.static) 0755 0 0
+file /bin/mdadm $(command -v mdadm.static) 0755 0 0
 # busybox
-file /bin/busybox /bin/busybox 0755 0 0
+file /bin/busybox $(command -v busybox.static) 0755 0 0
 slink /bin/sh busybox 0777 0 0
 file /init ${INIT_LOCATION} 0755 0 0
 EOF
