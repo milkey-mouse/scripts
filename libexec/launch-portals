@@ -1,7 +1,7 @@
 #!/bin/sh
 # this is super hacky, the right way to do this is systemd socket units
 
-dbus-update-activation-environment WAYLAND_DISPLAY
+#dbus-update-activation-environment WAYLAND_DISPLAY
 
 #pkill -u "${USER}" -x 'pipewire|wireplumber' &>/dev/null
 #pwait -u "${USER}" -x 'pipewire|wireplumber'
