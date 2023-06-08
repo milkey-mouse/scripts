@@ -6,7 +6,7 @@ NICENESS="${NICENESS:-$(portageq envvar PORTAGE_NICENESS)}"
 
 ORIGINAL_MAKE="$(command -v make)"
 make() {
-    "${ORIGINAL_MAKE}" "$@" "${MAKEOPTS}"
+    "${ORIGINAL_MAKE}" "$@" ${MAKEOPTS}
 }
 
 strip_config_vars() {
