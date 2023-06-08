@@ -1,6 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
+# TODO: when I can break & fix this box's boot process with impunity,
+# roll in some of the changes from genkernel v2 on the master branch
+# (hell, maybe reformat the rootfs with `format` while you're at it)
+
 MAKEOPTS="${MAKEOPTS:-$(portageq envvar MAKEOPTS)}"
 NICENESS="${NICENESS:-$(portageq envvar PORTAGE_NICENESS || :)}"
 
