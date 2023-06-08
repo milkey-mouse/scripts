@@ -13,3 +13,4 @@ nocache
 polyphone
 record.sh
 woff2_compress
+libexec/anki-*-linux-qt6

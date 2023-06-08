@@ -1,6 +1,6 @@
 #!/bin/sh
 
-cd "$(dirname "$(realpath "$0")")"/anki-*-linux-qt5
+cd "$(dirname "$(realpath "$0")")"/libexec/anki-*-linux-qt6
 
 exec guix shell \
     --container --network --pure --emulate-fhs \
