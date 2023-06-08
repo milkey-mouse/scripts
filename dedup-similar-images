@@ -1,0 +1,12 @@
+#!/bin/sh
+set -euo pipefail
+
+export TMPDIR="$(mktemp -d)"
+echo "${TMPDIR}"
+#trap 'rm -r "${TMPDIR}"' EXIT
+
+#find . -type f -print0 | xargs -0n1 -P"$(nproc)" sh -c 'HASH="$(ffmpeg -hide_banner -loglevel error -i "$1" -vf signature=filename=/dev/stdout -f null - | sha256sum -b | head -c64)" && printf '"'%s'"' "$1" | tr '"'\n' '\0'"' | sed '"'"'s/$/\n/'"'"' >> "${TMPDIR}/${HASH##SHA256=}"' sh
+find "${TMPDIR}" -type f -exec wc -l {} + | grep -v '^ *1' \
+    | awk '{ print $2 }' | grep -Fxv total \
+    | xargs -n1 sh -c "tr '\0\n' '\n\0'"' < "$1" | xargs -0 ls -Sl; echo' sh
+#    | xargs -n1 sh -c "tr '\0\n' '\n\0'"' < "$1" | xargs -0 sh -c "find \"\$@\" -type f -printf %s\\\t%p\\\0 | sort -rnz | tail -zn+2 | cut -zf2- | xargs -0 rm -v" sh' sh
