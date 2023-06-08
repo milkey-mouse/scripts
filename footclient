@@ -1,0 +1,6 @@
+#!/bin/sh
+set -euo pipefail
+
+f="${XDG_RUNTIME_DIR:-/run/user/${UID}}/foot-${WAYLAND_DISPLAY}.sock"
+while [ ! -e "$f" ]; do sleep 0.1; done
+exec /usr/bin/footclient "$@"
