@@ -1,0 +1,27 @@
+#!/bin/sh
+# this is super hacky, the right way to do this is systemd socket units
+
+dbus-update-activation-environment WAYLAND_DISPLAY
+
+#pkill -u "${USER}" -x 'pipewire|wireplumber' &>/dev/null
+#pwait -u "${USER}" -x 'pipewire|wireplumber'
+
+pipewire &
+PIPEWIRE_PID="$!"
+
+sleep 1
+wireplumber &
+WIREPLUMBER_PID="$!"
+
+sleep 1
+/usr/libexec/xdg-desktop-portal-wlr &
+XDG_DESKTOP_PORTAL_WLR_PID="$!"
+
+sleep 1
+/usr/libexec/xdg-desktop-portal &
+XDG_DESKTOP_PORTAL_PID="$!"
+
+swaymsg -t subscribe '[]'
+
+kill "${XDG_DESKTOP_PORTAL_PID}" "${XDG_DESKTOP_PORTAL_WLR_PID}" "${WIREPLUMBER_PID}" "${PIPEWIRE_PID}"
+wait
