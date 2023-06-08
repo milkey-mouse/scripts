@@ -185,8 +185,6 @@ dir /tmp 1777 0 0
 file /bin/create-snapshot $(command -v create-snapshot) 0755 0 0
 file /bin/deintegrify $(command -v deintegrify) 0755 0 0
 file /bin/e2fsck $(guix build e2fsck-static)/sbin/e2fsck 0755 0 0
-# GNU dd needed for O_DIRECT
-file /bin/dd /bin/dd.static 0755 0 0
 # cryptsetup
 file /bin/cryptsetup /sbin/cryptsetup 0755 0 0
 file /bin/dmsetup /sbin/dmsetup.static 0755 0 0
