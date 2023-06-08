@@ -1,0 +1,354 @@
+#!/usr/bin/env python3
+from urllib.request import HTTPPasswordMgrWithPriorAuth
+from urllib.request import HTTPBasicAuthHandler
+from urllib.request import HTTPCookieProcessor
+from urllib.request import build_opener
+from http.cookiejar import CookieJar
+from urllib.error import HTTPError
+from urllib.parse import urlencode
+from urllib.request import Request
+from urllib.request import urlopen
+from dataclasses import dataclass
+from xml.etree import ElementTree
+from datetime import datetime
+from base64 import b64encode
+from getpass import getpass
+from sys import stderr
+import subprocess
+import webbrowser
+import itertools
+import pprint # TODO: debug only
+import json
+import time
+
+NEXTCLOUD_URL = "http://192.168.1.161"
+USER_AGENT = b"overcast-to-gpodder 0.1 (https://github.com/milkey-mouse/overcast-to-gpodder)"
+
+
+class FeedIndex:
+    ITUNES_DTD = "{http://www.itunes.com/dtds/podcast-1.0.dtd}"
+    ITUNES_DTD_HTTPS = ITUNES_DTD.replace("http", "https")
+
+    @dataclass
+    class FeedItem:
+        itunes_title: str
+        title: str
+        urls: set[str]
+        guid: str
+        duration: int
+
+    def __init__(self, f):
+        self.titles = {}
+        self.itunes_titles = {}
+        self.urls = {}
+
+        def upsert(name, into, key, val):
+            if key is not None:
+                if key in into:
+                    print(
+                        f"warning: {name} '{key}' referenced in multiple entries, using last",
+                        file=stderr,
+                    )
+                into[key] = val
+
+        for item in self.parse_feed(f):
+            entry = (item.guid, item.duration)
+            upsert("title", self.titles, item.title, entry)
+            upsert("iTunes title", self.itunes_titles, item.itunes_title, entry)
+            for url in item.urls:
+                upsert("URL", self.urls, url, entry)
+
+    def find(self, title=None, itunes_title=None, url=None):
+        title = title or itunes_title
+        itunes_title = itunes_title or title
+
+        return (
+            self.titles.get(title)
+            or self.itunes_titles.get(itunes_title)
+            or self.urls.get(url)
+        )
+
+    @classmethod
+    def parse_feed(cls, f):
+        in_channel = False
+        item = None
+        depth = 0
+
+        for event, e in ElementTree.iterparse(f, events=("start", "end")):
+            if event == "start":
+                depth += 1
+            elif event == "end":
+                depth -= 1
+
+            if depth == 2 and e.tag == "channel":
+                in_channel = True
+            elif depth == 1 and in_channel:
+                in_channel = False
+                continue
+            elif not in_channel:
+                continue
+
+            if depth == 3 and e.tag == "item":
+                item = cls.FeedItem(None, None, set(), None, None)
+                duration = guid = itunes_title = title = None
+                urls = set()
+            elif depth == 2 and item:
+                yield item
+                item = None
+                continue
+            elif not item:
+                continue
+
+            if depth == 4:
+                tag = e.tag.replace(cls.ITUNES_DTD, "itunes:")
+                tag = tag.replace(cls.ITUNES_DTD_HTTPS, "itunes:")
+
+                if tag == "itunes:title":
+                    item.itunes_title = "".join(e.itertext())
+                elif tag == "title":
+                    item.title = "".join(e.itertext())
+                elif tag == "enclosure":
+                    item.urls.add(e.get("url"))
+                elif tag == "guid":
+                    # TODO: does isPermalink="false" imply we shouldn't use it?
+                    item.guid = "".join(e.itertext())
+                elif tag == "itunes:duration":
+                    try:
+                        item.duration = int("".join(e.itertext()))
+                    except ValueError:
+                        # invalid or empty (but existing!)
+                        # duration tags are sadly common
+                        item.duration = None
+
+
+def get_guid_and_duration(feed_index, title, url):
+    guid = None
+    duration = None
+    try:
+        (guid, duration) = feed_index.find(title=title, url=url)
+    except Exception:
+        pass
+
+    if not duration:
+        print(
+            f"no duration in feed for '{title}'; reading the audio file ourselves"
+        )
+        try:
+            p = subprocess.run(
+                [
+                    "ffprobe",
+                    "-show_entries",
+                    "format=duration",
+                    "-v",
+                    "quiet",
+                    "-of",
+                    "csv=p=0",
+                    url,
+                ],
+                stdout=subprocess.PIPE,
+                stderr=stderr,
+                check=True,
+            )
+            duration = int(p.stdout.split(b".")[0])
+        except subprocess.CalledProcessError:
+            print(
+                f"ffprobe didn't exit successfully for '{url}'; we'll lie about the length of '{title}'",
+                file=stderr,
+            )
+        except FileNotFoundError:
+            print(
+                f"could not run ffprobe; we'll just lie about the length of '{title}'",
+                file=stderr,
+            )
+
+    if not duration:
+        # fall back to 10 minutes if we can't find the real
+        # duration. we only use this as a last resort, as
+        # some apps won't consider 10 min. into a "10-min.
+        # podcast" that's actually >10 min. as completing
+        # that episode. but if we can't find the duration
+        # ourselves, we just lie for the sake of marking
+        # the episode as played. (gPodder has no action to
+        # mark a podcast as completed so apps rely upon
+        # the playback position being at the end instead)
+        duration = 1200
+
+    return (guid, duration)
+
+
+def overcast_listened():
+    session = build_opener(HTTPCookieProcessor(CookieJar()))
+    session.addheaders = [(b"User-Agent", USER_AGENT)]
+    #with session.open(Request("https://overcast.fm/login", data=urlencode({
+    #    "email": input("Overcast email: "),
+    #    "password": getpass("Overcast password: "),
+    #}).encode("utf-8"))) as r:
+    #    while r.read(8192):
+    #        pass
+    #with session.open("https://overcast.fm/account/export_opml/extended") as r:
+    with open("/home/milkey/overcast.opml") as r:
+        in_feeds = False
+        feed = feed_index = None
+        for event, e in ElementTree.iterparse(r, events=("start", "end")):
+            if e.tag != "outline":
+                continue
+            elif e.get("text") == "feeds":
+                if event == "start":
+                    in_feeds = True
+                elif event == "end":
+                    in_feeds = False
+            elif not in_feeds:
+                continue
+            elif e.get("type") == "rss":
+                if event == "start":
+                    if e.get("xmlUrl") != "http://feeds.backtracks.fm/feeds/80000hours/80000-hours-podcast-with-rob-wiblin/feed.xml?1662750094":
+                        continue
+                    feed = e.get("xmlUrl")
+                    print(f"opening feed {feed}")
+                    try:
+                        with session.open(feed) as r:
+                            feed_index = FeedIndex(r)
+                    except urllib.error.HTTPError as e:
+                        print(f"couldn't open RSS feed {feed}: {e.code} {e.reason}", file=stderr)
+                elif event == "end":
+                    feed = feed_index = None
+            elif e.get("type") == "podcast-episode" and e.get("played") == "1":
+                if not feed:
+                    continue # TODO: debug only
+                if event == "end":
+                    assert feed is not None
+                    # TODO: warn on no GUID?
+                    title = e.get("title")
+                    url = e.get("enclosureUrl")
+                    (guid, duration) = get_guid_and_duration(feed_index, title, url)
+                    yield (feed, url, guid, duration)
+
+
+def encode_iter(iter, encoding="utf-8"):
+    for chunk in iter:
+        yield chunk.encode(encoding)
+
+
+# https://stackoverflow.com/q/21663800#46841935
+class SerializableGenerator(list):
+    """Generator that is serializable by JSON"""
+
+    def __init__(self, iterable):
+        tmp_body = iter(iterable)
+        try:
+            self._head = iter([next(tmp_body)])
+            self.append(tmp_body)
+        except StopIteration:
+            self._head = []
+
+    def __iter__(self):
+        return itertools.chain(self._head, *self[:1])
+
+
+class Nextcloud:
+    def __init__(self, url):
+        self.url = url
+        self.session = build_opener(HTTPCookieProcessor(CookieJar()))
+        self.session.addheaders = [(b"User-Agent", USER_AGENT)]
+
+    def browser_auth(self):
+        with self.session.open(Request(self.url + "/index.php/login/v2", method="POST")) as r:
+            challenge = json.load(r)
+
+        webbrowser.open(challenge["login"])
+
+        data = urlencode({"token": challenge["poll"]["token"]}).encode("utf-8")
+        poll_request = Request(challenge["poll"]["endpoint"], data=data)
+
+        # "The token will be valid for 20 minutes."
+        challenge_expiry = time.monotonic() + (20 * 60)
+        while time.monotonic() < challenge_expiry:
+            try:
+                with session.open(poll_request) as r:
+                    response = json.load(r)
+                    self.user = response["loginName"]
+                    self.password = response["appPassword"]
+            except HTTPError as e:
+                if e.code == 404:
+                    time.sleep(1)
+                else:
+                    raise
+
+    def auth(self, user, password):
+        self.user = user
+        self.password = password
+
+    def _auth_header(self):
+        auth = b64encode(f"{self.user}:{self.password}".encode("utf-8"))
+        return {b"Authorization": b"Basic " + auth}
+
+    def mark_listened(self, episodes):
+        done = False
+        while not done:
+            done = True
+            def oops_all_side_effects(x):
+                # stupid hack: done = False iff ten_episodes isn't empty
+                pprint.pprint(x) # TODO: debug only
+                done = False
+                return x
+
+
+            ten_episodes = itertools.islice(episodes, 10)
+            timestamp = datetime.now().isoformat(timespec="seconds")
+            with urlopen(
+                Request(
+                    url + "/index.php/apps/gpoddersync/episode_action/create",
+                    headers={
+                        **self._auth_header()
+                        b"Content-Type": b"application/json",
+                        b"User-Agent": USER_AGENT,
+                    },
+                    data=encode_iter(json.JSONEncoder().iterencode(
+                        SerializableGenerator(
+                            oops_all_side_effects({
+                                "podcast": feed,
+                                "episode": url,
+                                "guid": guid,
+                                "action": "play",
+                                "timestamp": timestamp,
+                                "position": duration,
+                                "started": duration,
+                                "total": duration,
+                            }) for (feed, url, guid, duration) in ten_episodes
+                        )
+                    )),
+                )
+            ) as r:
+                while r.read(8192):
+                    pass
+
+
+
+# auth = nextcloud_auth(NEXTCLOUD_URL)
+auth = (
+    "<redacted user>",
+    "<redacted token>",
+)
+if "--clear-existing" in sys.argv[1:]:
+    # TODO: make class for nextcloud connection
+    nextcloud_unsubscribe(NEXTCLOUD_URL, auth, nextcloud_subscribed())
+    nextcloud_subscribe(NEXTCLOUD_URL, auth, overcast_subscribed())
+nextcloud_mark_listened(NEXTCLOUD_URL, auth, overcast_listened())
+
+# pprint.pprint(set(nextcloud_listened(NEXTCLOUD_URL, auth)) - set(overcast_listened()))
+# pprint.pprint(set(overcast_listened()) - set(nextcloud_listened(NEXTCLOUD_URL, auth)))
+
+#def nextcloud_listened(url, auth):
+#    auth = b64encode(":".join(auth).encode("utf-8"))
+#    with urlopen(
+#        Request(
+#            url + "/index.php/apps/gpoddersync/episode_action",
+#            headers={
+#                b"Authorization": b"Basic " + auth,
+#                b"User-Agent": USER_AGENT,
+#            },
+#        )
+#    ) as r:
+#        response = json.load(r)
+#        for action in response["actions"]:
+#            yield action["episode"]
