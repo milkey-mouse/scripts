@@ -1,0 +1,3 @@
+#!/bin/sh
+
+while ! nice -n-10 alsaloop -a2 -r 48000 -f S32_LE -Cdefault -Pdmix:Loopback -t 100000; do :; done

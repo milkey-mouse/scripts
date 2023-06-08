@@ -1,0 +1,9 @@
+#!/bin/sh
+
+loopback &
+LOOPBACK="$!"
+
+ALSA_CONFIG_PATH="${HOME}/.asoundrc.loopback" "$@"
+
+ALSALOOP="$(ps -o pid= --ppid "${LOOPBACK}")"
+kill -2 "${LOOPBACK}" "${ALSALOOP}" #2>/dev/null # SIGINT
