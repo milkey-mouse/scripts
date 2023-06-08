@@ -9,8 +9,10 @@ exec guix shell \
     --expose=../anki-mpv=/usr/local/bin/mpv \
     --preserve=XDG_RUNTIME_DIR --share="${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}" \
     --share="${HOME}/.local/share/Anki" --share="${HOME}/.local/share/Anki2" \
-        alsa-lib coreutils dbus eudev fontconfig font-google-noto freetype \
-        gcc:lib glib glib:bin glibc-locales grep mesa mit-krb5 mpv nss lame \
-        libxcomposite libxcursor libxi libxkbcommon libxrandr libxrender \
-        libxtst wayland which zlib -- \
-    sh -c 'LC_ALL=en_US.utf8 ANKI_WAYLAND=1 QT_QPA_PLATFORM=wayland PATH="/usr/local/bin:${PATH}" exec ./anki' sh
+        --expression='(list (@@ (gnu packages gcc) gcc) "lib")' \
+        alsa-lib coreutils dbus eudev fontconfig font-google-noto \
+        font-fira-mono font-fira-sans freetype glib glib:bin glibc-locales \
+        grep mesa mit-krb5 mpv nss lame libxcomposite libxcursor libxi \
+        libxkbcommon libxkbfile libxrandr libxrender libxtst wayland which \
+        zlib -- \
+    sh -c 'LC_ALL=en_US.utf8 ANKI_WAYLAND=1 DISABLE_QT5_COMPAT=1 QT_QPA_PLATFORM=wayland PATH="/usr/local/bin:${PATH}" exec ./anki' sh
