@@ -1,0 +1,28 @@
+#!/bin/sh
+set -euo pipefail
+
+API_KEY="$(grep -Po '(?<=apikey\>)[^<]+' ~/.config/syncthing/config.xml || :)"
+
+curl --insecure -H "X-API-Key: ${API_KEY}" -X PATCH -d '{"paused":true}' \
+    https://127.0.0.1:8384/rest/config/folders/music-flacless
+
+cd ~/media/music
+
+mkdir -p /raid0/flacless/.cache
+find /raid0/flacless -noleaf '!' -type d '!' -path '/raid0/flacless/.*' -execdir rm {} +
+find /raid0/flacless -noleaf -mindepth 1 -type d '!' -path '/raid0/flacless/.*' -print0 | sort -zr | xargs -0r rmdir
+
+find . '!' -path './.*' -type d -exec mkdir -p /raid0/flacless/{} ';'
+
+find . '!' -path './.*' -type l -exec cp -an {} /raid0/flacless/{} ';' &
+
+find -L . '!' -path './.*' -type f -name '*.flac' -print0 | xargs -0n1 -P"$(nproc)" sh -c '[ -L "$1" ] || (CACHED="/raid0/flacless/.cache/$(shasum "$1" | cut -d" " -f1).m4a"; ffmpeg -hide_banner -loglevel error -n -i "$1" -c:a libfdk_aac -b:a 256k -movflags +faststart "${CACHED}"; cp -l "${CACHED}" "/raid0/flacless/${1%.*}.m4a")' sh 2>&1 | grep -xv "File '"'.*'"' already exists. Exiting." 1>&2 &
+find -L . '!' -path './.*' -type f '!' -name '*.flac' -print0 | xargs -0n1 -P"$(nproc)" sh -c '[ -L "$1" ] || (CACHED="/raid0/flacless/.cache/$(shasum "$1" | cut -d" " -f1).${1##*.}"; cp -n "$1" "${CACHED}"; cp -l "${CACHED}" "/raid0/flacless/$1")' sh &
+
+wait
+
+cd /raid0/flacless
+find . -noleaf -type l | cut -c3- > .symlinks
+
+curl --insecure -H "X-API-Key: ${API_KEY}" -X PATCH -d '{"paused":false}' \
+    https://127.0.0.1:8384/rest/config/folders/music-flacless
