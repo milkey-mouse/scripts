@@ -179,6 +179,23 @@ if [ "${INTEGRITY_COUNT}" -ne 0 ]; then
   done
 fi
 
+# open any other volumes that share a volume key (yes, it's a weird setup)
+for DISK in /sys/block/*; do
+  for PARTITION in "/dev/${DISK#/sys/block/}"*; do
+    if [ "${PARTITION}" != "${CRYPT_ROOT_PATH}" ] \
+      && LABEL="$(
+        cryptsetup luksDump "${PARTITION}" 2>/dev/null \
+          | sed -n 's/^Label:[ \t]*\(.*\)$/\1/p' \
+          | grep -Fvx '(no label)'
+      )" \
+      && cryptsetup luksOpen "${PARTITION}" "${LABEL}" \
+        --volume-key-file /tmp/volume-key 2>/dev/null
+    then
+      printf "Opened %s as /dev/mapper/%s.\n" "${PARTITION}" "${LABEL}"
+    fi
+  done
+done
+
 rm /tmp/volume-key
 
 if ! mount /dev/mapper/root /mnt; then
