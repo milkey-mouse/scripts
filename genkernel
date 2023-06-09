@@ -133,18 +133,18 @@ for _ in $(seq 20); do
     break
   fi
 
-  printf "Waiting for ${CRYPT_ROOT} to show up in /dev...\n"
+  printf "Waiting for %s to show up in /dev...\n" "${CRYPT_ROOT}"
   sleep 1
 done
 
 CRYPT_ROOT_PATH="$(findfs ${CRYPT_ROOT})"
 if [ "$?" -ne "0" ] || [ -z "${CRYPT_ROOT_PATH}" ]; then
-  printf "${CRYPT_ROOT} does not exist.\n"
+  printf "%s does not exist.\n" "${CRYPT_ROOT}"
   exit 1
 fi
 
 if ! cryptsetup isLuks "${CRYPT_ROOT_PATH}"; then
-  printf "${CRYPT_ROOT_PATH} was not identified as a LUKS device.\n"
+  printf "%s was not identified as a LUKS device.\n" "${CRYPT_ROOT_PATH}"
   exit 1
 fi
 
@@ -152,15 +152,15 @@ while ! cryptsetup luksDump "${CRYPT_ROOT_PATH}" \
   --dump-volume-key --volume-key-file /tmp/volume-key \
   --batch-mode >/dev/null
 do
-  printf "Could not dump ${CRYPT_ROOT_PATH} volume key. Trying again...\n"
+  printf "Could not dump %s volume key. Trying again...\n" "${CRYPT_ROOT_PATH}"
 done
 
 while ! cryptsetup luksOpen "${CRYPT_ROOT_PATH}" root \
   --volume-key-file /tmp/volume-key --allow-discards
 do
-  printf "Could not open ${CRYPT_ROOT_PATH}. Trying again...\n"
+  printf "Could not open %s. Trying again...\n" "${CRYPT_ROOT_PATH}"
 done
-printf "Opened ${CRYPT_ROOT_PATH} as /dev/mapper/root.\n"
+printf "Opened %s as /dev/mapper/root.\n" "${CRYPT_ROOT_PATH}"
 
 if [ "${INTEGRITY_COUNT}" -ne 0 ]; then
   VOLUME_KEY_FORMAT="$(wc -c </tmp/volume-key)/1 \"%02x\""
