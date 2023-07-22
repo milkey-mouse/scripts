@@ -64,8 +64,8 @@ EOF
 
         if [ -f "${FOLDER_PATH}/${OLD_FILE}" ]; then
             (
-                mkdir -vp "${FOLDER_PATH}/${NEW_FILE%/*}"
-                mv -vn "${FOLDER_PATH}/${OLD_FILE}" "${FOLDER_PATH}/${NEW_FILE}"
+                mkdir -vp "$(realpath "${FOLDER_PATH}")/${NEW_FILE%/*}"
+                mv -vn "$(realpath "${FOLDER_PATH}")/${OLD_FILE}" "$(realpath "${FOLDER_PATH}")/${NEW_FILE}"
             ) || :  # OK if file can't be moved; maybe there was already a file at $NEW_FILE
         else
             printf 'already moved %s\n' "${OLD_FILE}" >&2
