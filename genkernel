@@ -53,7 +53,7 @@ setup_config() {
                 printf "Nothing new in this config.\n"
             else
                 printf "New config parameters were set to their defaults:\n"
-                GREP_COLOR="01;32" grep -F --color=always "${NEW_CONFIG_VARS}" .config | grep -E --color=always 'y?$'
+                GREP_COLORS='mt=01;32' grep -F --color=always "${NEW_CONFIG_VARS}" .config | grep -E --color=always 'y?$'
             fi
         fi
     fi
