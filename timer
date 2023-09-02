@@ -42,8 +42,9 @@ sleep_for_interval() {
 }
 
 sleep_to_date() {
+  TIME="$1"  # for MSG
   CURRENT_TIME="$(date +%s)"
-  TARGET_TIME="$(date -d "$1" +%s 2>/dev/null)"
+  TARGET_TIME="$(date -d "${TIME}" +%s 2>/dev/null)"
   if (( ${TARGET_TIME} < ${CURRENT_TIME} )); then
     # don't set a timer in the past!
     # the cause is likely a 12-hour format being parsed as 24.
@@ -59,13 +60,12 @@ sleep_to_date() {
     # e.g. "timer 1:00" after 1PM will be 1AM tomorrow
     TARGET_TIME="$(( ${TARGET_TIME} + 86400 ))"
   fi
-  TIME="$(( ${TARGET_TIME} - ${CURRENT_TIME} ))s"
-  sleep "${TIME}"
-  TIME="$1"  # for MSG
+  sleep "$(( ${TARGET_TIME} - ${CURRENT_TIME} ))s" 2>/dev/null
 }
 
-sleep_for_interval "$1" || sleep_to_date "$1"
-shift
+if sleep_for_interval "$1" || sleep_to_date "$1"; then
+  shift
+fi
 
 # TODO: swaymsg exec does not preserve TIMER_SOUND value
 TIMER_SOUND="${TIMER_SOUND:-/usr/local/share/sounds/timer/ding.wav}"
