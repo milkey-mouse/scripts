@@ -1,0 +1,39 @@
+#!/bin/sh
+set -euo pipefail
+
+if [ "$#" == 0 ] || [ "$#" -gt 3 ]; then
+  printf 'usage: unspread in.pdf <split.pdf> <split_frac>\n'
+  exit
+fi
+
+TMPDIR="$(mktemp -d)"
+trap 'rm -r "${TMPDIR}"' EXIT
+
+IN_PDF="$(realpath "$1")"
+
+(cd "${TMPDIR}"; pdftk "${IN_PDF}" burst)  # split PDF into pages
+
+SPLIT_FRAC="${3:-0.5}"
+
+PAGE=1
+
+pdftk $(
+  awk '/PageMediaDimensions/ { print $2 " " $3 }' "${TMPDIR}/doc_data.txt" | while read PAGE_WIDTH PAGE_HEIGHT; do
+    # I'd change to like %08d or something to work on >9999-page PDFs, but these
+    # filenames are chosen by pdftk when splitting/"bursting". TODO
+    SUFFIX="$(printf "%04d" "${PAGE}").pdf"
+    SPREAD="${TMPDIR}/pg_${SUFFIX}"
+    LEFT="${TMPDIR}/left_${SUFFIX}"
+    RIGHT="${TMPDIR}/right_${SUFFIX}"
+    PAGE=$((PAGE + 1))
+
+    WIDTH_LEFT="$(printf "%0.f" "$(printf "%s * %s\n" "${PAGE_WIDTH}" "${SPLIT_FRAC}" | bc -l)")"
+    WIDTH_RIGHT=$((PAGE_WIDTH - WIDTH_LEFT))
+
+    gs -q -o "${LEFT}" -sDEVICE=pdfwrite -g"$((WIDTH_LEFT * 10))x$((PAGE_HEIGHT * 10))" -c "<</PageOffset [0 0]>> setpagedevice" -f "${SPREAD}"
+    gs -q -o "${RIGHT}" -sDEVICE=pdfwrite -g"$((WIDTH_RIGHT * 10))x$((PAGE_HEIGHT * 10))" -c "<</PageOffset [-${WIDTH_LEFT} 0]>> setpagedevice" -f "${SPREAD}"
+
+    rm "${SPREAD}"
+    printf "%s %s " "${LEFT}" "${RIGHT}"
+  done
+) cat output "${2:-${1%.pdf}_split.pdf}"
