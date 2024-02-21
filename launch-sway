@@ -1,0 +1,17 @@
+#!/bin/sh
+
+# force all generic backend to use wayland backend
+export GDK_BACKEND=wayland
+export QT_QPA_PLATFORM=wayland
+export CLUTTER_BACKEND=wayland
+export SDL_VIDEODRIVER=wayland
+export EWOL_BACKEND=wayland
+
+export XDG_CURRENT_DESKTOP=sway
+export XDG_SESSION_TYPE=wayland
+
+export WLR_RENDERER=vulkan
+
+sway "$@"
+
+pkill -SIGINT -P $$
