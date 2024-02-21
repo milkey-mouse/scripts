@@ -1,7 +1,7 @@
 #!/bin/sh
 set -euo pipefail
 
-FOLDERS='{"photos": ["gapps/", ""], "raws": ["", "../"], "signal": ["", "../"]}'
+FOLDERS='{"photos": ["gapps/", ""], "raws": ["", "../"], "recordings": ["", "../"], "signal": ["", "../"]}'
 TIMEOUT=86400
 
 HOSTNAME="$(hostname)"
